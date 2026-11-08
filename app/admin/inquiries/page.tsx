@@ -1,14 +1,14 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { Inbox } from "lucide-react";
+import { useMemo } from "react";
+import { BellRing, Check, Inbox } from "lucide-react";
 import StatCard from "@/components/admin/stat-card";
+import { setInquiryStatus, useInquiries, type InquiryStatus } from "@/lib/inquiries";
 import {
-  getAllInquiries,
-  setInquiryStatus,
-  type Inquiry,
-  type InquiryStatus,
-} from "@/lib/inquiries";
+  bookingCountLabel,
+  markInquiriesSeen,
+  useInquiryAlerts,
+} from "@/lib/inquiry-alerts";
 
 const STATUSES: InquiryStatus[] = ["PENDING", "CONFIRMED", "DECLINED"];
 
@@ -44,8 +44,33 @@ function formatDay(iso: string) {
   return Number.isNaN(parsed.getTime()) ? "—" : dateFormat.format(parsed);
 }
 
+const relativeFormat = new Intl.RelativeTimeFormat("en", { numeric: "auto" });
+const RELATIVE_STEPS: [Intl.RelativeTimeFormatUnit, number][] = [
+  ["day", 86_400_000],
+  ["hour", 3_600_000],
+  ["minute", 60_000],
+];
+
+/** "3 hours ago" / "just now" — keeps the banner honest about freshness. */
+function arrivedAt(iso: string) {
+  const parsed = Date.parse(iso);
+  if (!Number.isFinite(parsed)) return "";
+
+  const elapsed = Date.now() - parsed;
+  if (elapsed < 60_000) return "just now";
+
+  for (const [unit, size] of RELATIVE_STEPS) {
+    if (elapsed >= size) {
+      return relativeFormat.format(-Math.floor(elapsed / size), unit);
+    }
+  }
+
+  return "just now";
+}
+
 export default function AdminInquiriesPage() {
-  const [inquiries, setInquiries] = useState<Inquiry[]>(() => getAllInquiries());
+  const inquiries = useInquiries();
+  const { unread, unreadIds, latestUnread } = useInquiryAlerts();
 
   const stats = useMemo(() => {
     const counts: Record<InquiryStatus, number> = {
@@ -85,6 +110,65 @@ export default function AdminInquiriesPage() {
 
   return (
     <div className="space-y-6">
+      {unread > 0 && (
+        <section
+          aria-labelledby="new-bookings-heading"
+          className="relative overflow-hidden rounded-2xl bg-alert-50 p-5 pl-6 ring-1 ring-alert-500/30"
+        >
+          <span
+            className="absolute inset-y-0 left-0 w-1.5 bg-alert-500"
+            aria-hidden="true"
+          />
+
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div className="flex items-start gap-3.5">
+              <span className="relative mt-0.5 grid size-10 shrink-0 place-items-center rounded-full bg-alert-500/12 text-alert-600 ring-1 ring-alert-500/25">
+                <BellRing className="size-[18px]" strokeWidth={2} aria-hidden="true" />
+                <span
+                  className="absolute -top-0.5 -right-0.5 flex size-2.5"
+                  aria-hidden="true"
+                >
+                  <span className="absolute inline-flex size-full animate-ping rounded-full bg-alert-500/70" />
+                  <span className="relative inline-flex size-2.5 rounded-full bg-alert-500" />
+                </span>
+              </span>
+
+              <div>
+                <p className="text-[9.5px] font-semibold tracking-[0.18em] text-alert-700/80 uppercase">
+                  New since your last visit
+                </p>
+                <h2
+                  id="new-bookings-heading"
+                  className="mt-1 font-display text-[20px] leading-tight text-ink"
+                >
+                  {bookingCountLabel(unread)} to review
+                </h2>
+                {latestUnread && (
+                  <p className="mt-1.5 text-[12.5px] leading-relaxed text-ink-soft/85">
+                    Latest from{" "}
+                    <span className="font-semibold text-ink">
+                      {latestUnread.fullName}
+                    </span>{" "}
+                    — {latestUnread.tourTitle}, {latestUnread.partySize}{" "}
+                    {latestUnread.partySize === 1 ? "guest" : "guests"},{" "}
+                    {arrivedAt(latestUnread.createdAt)}.
+                  </p>
+                )}
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => markInquiriesSeen()}
+              className="inline-flex items-center gap-1.5 rounded-full bg-alert-500 px-3.5 py-2 text-[11.5px] font-semibold text-white transition-colors hover:bg-alert-600 focus-visible:ring-2 focus-visible:ring-alert-600/40 focus-visible:ring-offset-2 focus-visible:ring-offset-alert-50 focus-visible:outline-none"
+            >
+              <Check className="size-3.5" strokeWidth={2.6} aria-hidden="true" />
+              Mark all as seen
+            </button>
+          </div>
+        </section>
+      )}
+
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard
           label="All inquiries"
@@ -206,8 +290,13 @@ export default function AdminInquiriesPage() {
       <section className="overflow-hidden rounded-2xl bg-white ring-1 ring-ink/8">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-ink/8 px-5 py-4">
           <div>
-            <h2 className="font-display text-[19px] leading-tight text-ink">
+            <h2 className="flex items-center gap-2 font-display text-[19px] leading-tight text-ink">
               Recent inquiries
+              {unread > 0 && (
+                <span className="rounded-full bg-alert-500 px-2 py-0.5 text-[9.5px] font-bold tracking-[0.1em] text-white uppercase">
+                  {unread} new
+                </span>
+              )}
             </h2>
             <p className="mt-0.5 text-[12.5px] text-ink-soft/65">
               Newest first · change a status to update the report
@@ -240,10 +329,33 @@ export default function AdminInquiriesPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-ink/6">
-              {inquiries.map((inquiry) => (
-                <tr key={inquiry.id} className="transition-colors hover:bg-sand-50/70">
+              {inquiries.map((inquiry) => {
+                const isNew = unreadIds.has(inquiry.id);
+
+                return (
+                <tr
+                  key={inquiry.id}
+                  className={
+                    isNew
+                      ? "bg-alert-50/70 transition-colors hover:bg-alert-50"
+                      : "transition-colors hover:bg-sand-50/70"
+                  }
+                >
                   <td className="px-5 py-3.5 font-mono text-[12px] text-ink-soft/80">
-                    {inquiry.reference}
+                    <span
+                      className={
+                        isNew
+                          ? "border-l-2 border-alert-500 pl-2.5"
+                          : undefined
+                      }
+                    >
+                      {inquiry.reference}
+                    </span>
+                    {isNew && (
+                      <span className="ml-2 inline-flex items-center rounded-full bg-alert-500 px-1.5 py-0.5 align-middle text-[8.5px] font-bold tracking-[0.1em] text-white uppercase">
+                        New
+                      </span>
+                    )}
                   </td>
                   <td className="px-5 py-3.5">
                     <p className="text-[13px] font-medium text-ink">
@@ -264,11 +376,9 @@ export default function AdminInquiriesPage() {
                     <select
                       value={inquiry.status}
                       onChange={(event) =>
-                        setInquiries(
-                          setInquiryStatus(
-                            inquiry.id,
-                            event.target.value as InquiryStatus,
-                          ),
+                        setInquiryStatus(
+                          inquiry.id,
+                          event.target.value as InquiryStatus,
                         )
                       }
                       aria-label={`Status for ${inquiry.reference}`}
@@ -282,7 +392,8 @@ export default function AdminInquiriesPage() {
                     </select>
                   </td>
                 </tr>
-              ))}
+                );
+              })}
 
               {inquiries.length === 0 && (
                 <tr>

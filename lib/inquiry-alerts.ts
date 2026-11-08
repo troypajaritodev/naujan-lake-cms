@@ -69,6 +69,8 @@ export type InquiryAlerts = {
   unreadIds: Set<string>;
   /** Most recent pending request, used for the header alert text. */
   latest: Inquiry | null;
+  /** Most recent unread request, used for the "new since last visit" banner. */
+  latestUnread: Inquiry | null;
 };
 
 export function useInquiryAlerts(): InquiryAlerts {
@@ -86,6 +88,7 @@ export function useInquiryAlerts(): InquiryAlerts {
   let pending = 0;
   let unread = 0;
   let latest: Inquiry | null = null;
+  let latestUnread: Inquiry | null = null;
   const unreadIds = new Set<string>();
 
   for (const inquiry of inquiries) {
@@ -98,10 +101,12 @@ export function useInquiryAlerts(): InquiryAlerts {
     if (Number.isFinite(createdAt) && createdAt > seenAt) {
       unread += 1;
       unreadIds.add(inquiry.id);
+      // The list is newest-first, so the first hit is the newest arrival.
+      if (!latestUnread) latestUnread = inquiry;
     }
   }
 
-  return { pending, unread, unreadIds, latest };
+  return { pending, unread, unreadIds, latest, latestUnread };
 }
 
 /** "3 new bookings" / "1 new booking" — shared by the header and the banner. */

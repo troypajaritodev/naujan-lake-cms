@@ -3,6 +3,8 @@
  * transactions). Stored in `localStorage` until the CMS/Supabase table exists.
  */
 
+import { useSyncExternalStore } from "react";
+
 export type InquiryStatus = "PENDING" | "CONFIRMED" | "DECLINED";
 
 export type Inquiry = {
@@ -168,6 +170,15 @@ export function getInquiriesSnapshot(): Inquiry[] {
 
 export function getServerInquiriesSnapshot(): Inquiry[] {
   return EMPTY;
+}
+
+/** Live, newest-first inquiry list for client components. */
+export function useInquiries(): Inquiry[] {
+  return useSyncExternalStore(
+    subscribeInquiries,
+    getInquiriesSnapshot,
+    getServerInquiriesSnapshot,
+  );
 }
 
 export function setInquiryStatus(

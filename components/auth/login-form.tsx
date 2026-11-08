@@ -22,10 +22,10 @@ export default function LoginForm() {
   const [pending, setPending] = useState(false);
   // `?next=` is read once on mount; the value is never rendered, so it cannot
   // cause a hydration mismatch.
-  const [next] = useState(() => {
-    if (typeof window === "undefined") return "/account";
+  const [next] = useState<string | null>(() => {
+    if (typeof window === "undefined") return null;
     const target = new URLSearchParams(window.location.search).get("next");
-    return target && target.startsWith("/") ? target : "/account";
+    return target && target.startsWith("/") ? target : null;
   });
 
   const set = (field: Field) => (value: string) => {
@@ -39,8 +39,10 @@ export default function LoginForm() {
     setPending(true);
 
     try {
-      await signIn(values.email, values.password);
-      router.push(next);
+      const user = await signIn(values.email, values.password);
+      // Staff land where the work is — the inquiry report that carries the
+      // "new since your last visit" banner.
+      router.push(next ?? (user.role === "admin" ? "/admin/inquiries" : "/account"));
     } catch (error) {
       if (error instanceof AuthError && error.field) {
         setErrors({ [error.field]: error.message });
