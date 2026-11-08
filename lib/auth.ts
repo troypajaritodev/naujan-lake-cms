@@ -47,6 +47,26 @@ const SEED_USERS: StoredUser[] = [
     passwordHash:
       "3f0dd34782ec47768171b8e1a8b1980df0cadc01c78e0ac12f510e48d1dd7400",
   },
+  {
+    id: "usr_ana_seed",
+    email: "ana.reyes@example.com",
+    fullName: "Ana Reyes",
+    phone: "+63 918 442 1180",
+    role: "visitor",
+    createdAt: "2026-09-14T08:00:00.000Z",
+    passwordHash:
+      "d949210e0d28020725aef6f4c3bbe6e8e38d46881e527487e53d32a0bfca6acc",
+  },
+  {
+    id: "usr_carlo_seed",
+    email: "carlo.mendoza@example.com",
+    fullName: "Carlo Mendoza",
+    phone: "+63 920 118 7743",
+    role: "visitor",
+    createdAt: "2026-10-02T08:00:00.000Z",
+    passwordHash:
+      "37f186a01fa29f05c7684684dbb224ce28367b2f30b339b3fd24180666ba2d4f",
+  },
 ];
 
 export class AuthError extends Error {
@@ -309,4 +329,22 @@ export async function changePassword(
   };
   writeUsers(users);
   emit();
+}
+
+export type UserSummary = {
+  total: number;
+  staff: number;
+  customers: number;
+};
+
+/** Every account, newest first — password digests are stripped. */
+export function listUsers(): SessionUser[] {
+  return readUsers()
+    .map(toSessionUser)
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+}
+
+export function summariseUsers(users: SessionUser[]): UserSummary {
+  const staff = users.filter((user) => user.role === "admin").length;
+  return { total: users.length, staff, customers: users.length - staff };
 }

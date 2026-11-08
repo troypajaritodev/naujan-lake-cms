@@ -3,7 +3,16 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
-import { ArrowUpRight, Clock, MapPin, Menu, Phone, User, X } from "lucide-react";
+import {
+  ArrowUpRight,
+  Clock,
+  MapPin,
+  Menu,
+  Phone,
+  ShieldCheck,
+  User,
+  X,
+} from "lucide-react";
 import BrandMark from "@/components/brand-mark";
 import { useAuth } from "@/components/auth-provider";
 import { navigation, site } from "@/lib/site";
@@ -157,6 +166,19 @@ export default function SiteHeader() {
             {accountLabel}
           </Link>
 
+          {ready && user?.role === "admin" && (
+            <Link
+              href="/admin"
+              className={`hidden rounded-full border px-3 py-1.5 text-[10px] font-semibold tracking-[0.12em] uppercase transition-colors sm:inline-flex ${
+                onDark
+                  ? "border-white/25 text-sand-100/80 hover:bg-white/10"
+                  : "border-ink/15 text-ink-soft hover:bg-ink/5"
+              }`}
+            >
+              Admin
+            </Link>
+          )}
+
           <Link
             href="/inquire"
             className={`hidden items-center gap-2 rounded-full px-5 py-2.5 text-[13px] font-semibold transition-all duration-300 sm:inline-flex ${
@@ -237,6 +259,17 @@ export default function SiteHeader() {
           </nav>
 
           <div className="mt-10 space-y-4">
+            {ready && user?.role === "admin" && (
+              <Link
+                href="/admin"
+                tabIndex={menuOpen ? 0 : -1}
+                onClick={() => setMenuOpen(false)}
+                className="flex w-full items-center justify-center gap-2 rounded-full bg-white/10 px-5 py-3.5 text-sm font-semibold text-sand-50"
+              >
+                <ShieldCheck className="size-4" strokeWidth={2} aria-hidden="true" />
+                Open admin panel
+              </Link>
+            )}
             <Link
               href={accountHref}
               tabIndex={menuOpen ? 0 : -1}
