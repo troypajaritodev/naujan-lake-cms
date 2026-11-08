@@ -6,6 +6,7 @@ import {
   ArrowLeft,
   ArrowRight,
   Backpack,
+  Check,
   Clock,
   Compass,
   MapPin,
@@ -66,6 +67,7 @@ export default async function TourDetailPage({ params }: TourPageProps) {
   if (!tour) notFound();
 
   const total = tariffTotal(tour);
+  const others = tours.filter((entry) => entry.slug !== tour.slug).slice(0, 3);
 
   return (
     <>
@@ -143,6 +145,25 @@ export default async function TourDetailPage({ params }: TourPageProps) {
                   </li>
                 ))}
               </ol>
+
+              <h2 className="mt-14 font-display text-[26px] leading-tight font-light text-ink">
+                What&rsquo;s included
+              </h2>
+              <ul className="mt-5 grid gap-x-8 gap-y-3 sm:grid-cols-2">
+                {tour.inclusions.map((item) => (
+                  <li
+                    key={item}
+                    className="flex items-start gap-2.5 text-[13.5px] leading-relaxed text-ink-soft/85"
+                  >
+                    <Check
+                      className="mt-0.5 size-4 shrink-0 text-moss-600"
+                      strokeWidth={2.2}
+                      aria-hidden="true"
+                    />
+                    {item}
+                  </li>
+                ))}
+              </ul>
 
               <h2 className="mt-14 font-display text-[26px] leading-tight font-light text-ink">
                 What to bring
@@ -223,7 +244,7 @@ export default async function TourDetailPage({ params }: TourPageProps) {
                 </div>
 
                 <Link
-                  href="/inquire"
+                  href={`/inquire?tour=${tour.slug}`}
                   className="group mt-6 inline-flex w-full items-center justify-center gap-2 rounded-full bg-lake-800 px-5 py-3.5 text-sm font-semibold text-sand-50 transition-colors hover:bg-lake-700"
                 >
                   <Compass className="size-4" strokeWidth={2} />
@@ -238,6 +259,62 @@ export default async function TourDetailPage({ params }: TourPageProps) {
                 </p>
               </div>
             </aside>
+          </div>
+        </div>
+      </section>
+
+      <section className="border-t border-ink/8 bg-white py-16 lg:py-20">
+        <div className="mx-auto w-full max-w-7xl px-5 sm:px-8 lg:px-12">
+          <div className="flex flex-wrap items-end justify-between gap-5">
+            <div>
+              <p className="text-[11px] font-medium tracking-[0.22em] text-sand-600 uppercase">
+                Other packages
+              </p>
+              <h2 className="mt-3 font-display text-[26px] leading-tight font-light text-ink">
+                Pair it with another morning.
+              </h2>
+            </div>
+            <Link
+              href="/tours"
+              className="group inline-flex items-center gap-2 text-[13px] font-medium text-lake-700 transition-colors hover:text-lake-900"
+            >
+              All packages
+              <ArrowRight
+                className="size-4 transition-transform duration-300 group-hover:translate-x-1"
+                strokeWidth={1.9}
+              />
+            </Link>
+          </div>
+
+          <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {others.map((entry) => (
+              <Link
+                key={entry.slug}
+                href={`/tours/${entry.slug}`}
+                className="group flex gap-4 rounded-2xl border border-ink/8 p-3 transition-colors hover:border-lake-600/40 hover:bg-sand-50"
+              >
+                <div className="relative size-20 shrink-0 overflow-hidden rounded-xl bg-lake-900">
+                  <Image
+                    src={entry.image}
+                    alt={entry.imageAlt}
+                    fill
+                    sizes="80px"
+                    className="object-cover transition-transform duration-500 group-hover:scale-105"
+                  />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-[10px] font-semibold tracking-[0.14em] text-sand-600 uppercase">
+                    {entry.category}
+                  </p>
+                  <h3 className="mt-1 truncate text-[14.5px] font-medium text-ink">
+                    {entry.title}
+                  </h3>
+                  <p className="mt-1 text-[12.5px] text-ink-soft/75">
+                    {peso.format(entry.ratePerPerson)} · {entry.duration}
+                  </p>
+                </div>
+              </Link>
+            ))}
           </div>
         </div>
       </section>
