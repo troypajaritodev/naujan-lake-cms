@@ -226,96 +226,139 @@ To establish the definitive digital hub for Naujan Lake National Park that balan
 
 ## 7. Database Schema & Data Models
 
-### 7.1 Entity Relationship Overview
-```
-+------------------+         +--------------------+         +-------------------+
-|    categories    | <-----+ |      species       | +-----> |   species_media   |
-+------------------+         +--------------------+         +-------------------+
-                                       |
-                                       | (references)
-                                       v
-+------------------+         +--------------------+         +-------------------+
-|      tours       | <-----+ |  tour_inquiries    |         |    advisories     |
-+------------------+         +--------------------+         +-------------------+
-                                                                      |
-+------------------+                                                  v
-|   subscribers    | <--------------------------------------- [email broadcast]
-+------------------+
-```
+The relational design is implemented in [`supabase/schema.sql`](../supabase/schema.sql): **seven tables**, seven enum types, thirteen indexes, row-level security on every table, and seed data that mirrors the demo accounts and tour packages shipped with the app. Run it in the Supabase SQL editor (or `psql "$DATABASE_URL" -f supabase/schema.sql`); it is idempotent.
 
-### 7.2 Tables Definition
+### 7.1 Entity Relationship Diagram
+
+![Entity relationship diagram](./figures/er_diagram.svg)
+
+*Figure 1 — ER diagram. Generated from the schema by `python scripts/build_er_diagram.py`; edit the script rather than the SVG.*
+
+### 7.2 Relationships
+
+| Parent | Child | Foreign key | Cardinality | Rule |
+| :--- | :--- | :--- | :--- | :--- |
+| `users` | `advisories` | `advisories.author_id` | 1 : N | Author removed → advisory kept (`ON DELETE SET NULL`) |
+| `users` | `tour_inquiries` | `tour_inquiries.user_id` | 1 : N (nullable) | Account removed → inquiry kept for the park's records |
+| `categories` | `species` | `species.category_id` | 1 : N | Category cannot be deleted while species reference it |
+| `tours` | `tour_inquiries` | `tour_inquiries.tour_id` | 1 : N | Package cannot be deleted while inquiries reference it |
+| `subscribers` | — | — | — | Standalone audience list |
+
+A `species_media` gallery table is planned for FR-1.2 but is intentionally outside the seven core tables; the featured image is held on `species` for now.
+
+### 7.3 Table Definitions
+
+#### `users`
+| Column | Type | Constraints | Description |
+| :--- | :--- | :--- | :--- |
+| `id` | UUID | PRIMARY KEY, DEFAULT `gen_random_uuid()` | Unique ID (mirrors `auth.users.id` once Supabase Auth is enabled) |
+| `email` | TEXT | NOT NULL, UNIQUE, format check | Sign-in identifier |
+| `full_name` | TEXT | NOT NULL, 2–120 chars | Display name |
+| `phone` | TEXT | NULLABLE | Contact number, prefilled into inquiries |
+| `role` | `user_role` | NOT NULL, DEFAULT `'visitor'` | `admin` (staff) or `visitor` (customer) |
+| `password_hash` | TEXT | NOT NULL | Salted SHA-256 digest `sha256(email:password)` |
+| `is_active` | BOOLEAN | NOT NULL, DEFAULT TRUE | Suspended accounts cannot sign in |
+| `created_at` | TIMESTAMPTZ | NOT NULL, DEFAULT `now()` | Registration date |
+| `last_login_at` | TIMESTAMPTZ | NULLABLE | Updated on each successful sign-in |
 
 #### `categories`
 | Column | Type | Constraints | Description |
 | :--- | :--- | :--- | :--- |
 | `id` | UUID | PRIMARY KEY | Unique ID |
-| `name` | TEXT | NOT NULL, UNIQUE | E.g. "Waterbirds", "Freshwater Fish" |
+| `name` | TEXT | NOT NULL, UNIQUE | E.g. "Waterbirds & Migratory Birds" |
 | `slug` | TEXT | NOT NULL, UNIQUE | URL slug |
 | `description` | TEXT | NULLABLE | Category description |
+| `sort_order` | INTEGER | NOT NULL, DEFAULT 0 | Display order in the catalogue |
+| `created_at` | TIMESTAMPTZ | NOT NULL, DEFAULT `now()` | Timestamp |
 
 #### `species`
 | Column | Type | Constraints | Description |
 | :--- | :--- | :--- | :--- |
 | `id` | UUID | PRIMARY KEY | Unique ID |
-| `category_id` | UUID | REFERENCES categories(id) | Foreign key |
+| `category_id` | UUID | NOT NULL, REFERENCES `categories(id)` | Taxonomy group |
 | `common_name` | TEXT | NOT NULL | E.g. "Philippine Duck" |
 | `local_name` | TEXT | NULLABLE | E.g. "Papan" |
-| `scientific_name` | TEXT | NOT NULL | E.g. "Anas luzonica" |
-| `conservation_status`| ENUM | NOT NULL | CR, EN, VU, NT, LC, DD |
-| `habitat` | TEXT | NOT NULL | Habitat details |
-| `seasonality` | ENUM | NOT NULL | RESIDENT, MIGRATORY, SEASONAL |
-| `description` | TEXT | NOT NULL | Comprehensive overview |
-| `featured_image` | TEXT | NOT NULL | URL to primary image |
+| `scientific_name` | TEXT | NOT NULL | E.g. *Anas luzonica* |
+| `conservation_status` | `conservation_status` | NOT NULL | CR, EN, VU, NT, LC, DD |
+| `seasonality` | `seasonality` | NOT NULL | RESIDENT, MIGRATORY, SEASONAL |
+| `habitat` | TEXT | NOT NULL | Distribution within the lake |
+| `description` | TEXT | NOT NULL | Full profile |
+| `featured_image` | TEXT | NOT NULL | Cover image URL |
 | `slug` | TEXT | NOT NULL, UNIQUE | URL identifier |
-| `created_at` | TIMESTAMPTZ | DEFAULT NOW() | Timestamp |
+| `created_at` / `updated_at` | TIMESTAMPTZ | NOT NULL, DEFAULT `now()` | Timestamps (`updated_at` maintained by trigger) |
 
 #### `tours`
 | Column | Type | Constraints | Description |
 | :--- | :--- | :--- | :--- |
 | `id` | UUID | PRIMARY KEY | Unique ID |
-| `title` | TEXT | NOT NULL | E.g. "Sunrise Birdwatching Cruise" |
+| `title` | TEXT | NOT NULL | E.g. "Sunrise boat tour" |
 | `slug` | TEXT | NOT NULL, UNIQUE | URL slug |
-| `duration` | TEXT | NOT NULL | E.g. "3-4 Hours" |
-| `rate_per_person` | DECIMAL | NOT NULL | Base fee in PHP |
-| `max_capacity` | INTEGER | NOT NULL | E.g. 6 persons per boat |
-| `difficulty` | ENUM | NOT NULL | EASY, MODERATE, CHALLENGING |
-| `inclusions` | TEXT[] | NOT NULL | Array of included items (Life vest, guide) |
+| `category` | TEXT | NOT NULL | Birdwatching, Scenic, Cultural, Research |
+| `summary` | TEXT | NOT NULL | One-paragraph description |
+| `duration` | TEXT | NOT NULL | E.g. "3–4 hours" |
+| `departure` | TEXT | NOT NULL | Time and meeting point |
+| `rate_per_person` | NUMERIC(10,2) | NOT NULL, ≥ 0 | Published tariff in PHP |
+| `max_capacity` | INTEGER | NOT NULL, 1–60 | Guests per booking |
+| `difficulty` | `tour_difficulty` | NOT NULL | EASY, MODERATE, CHALLENGING |
+| `inclusions` | TEXT[] | NOT NULL, DEFAULT `{}` | What the fee covers |
+| `what_to_bring` | TEXT[] | NOT NULL, DEFAULT `{}` | Packing list |
+| `notes` | TEXT[] | NOT NULL, DEFAULT `{}` | Caveats shown on the detail page |
+| `itinerary` | JSONB | NOT NULL, DEFAULT `[]` | `[{time, title, detail}]` |
+| `tariff` | JSONB | NOT NULL, DEFAULT `[]` | `[{label, amount}]`; sums to `rate_per_person` |
 | `featured_image` | TEXT | NOT NULL | Cover image URL |
-| `is_active` | BOOLEAN | DEFAULT TRUE | Active status |
+| `is_active` | BOOLEAN | NOT NULL, DEFAULT TRUE | Hidden from the public listing when false |
+| `created_at` / `updated_at` | TIMESTAMPTZ | NOT NULL, DEFAULT `now()` | Timestamps |
 
 #### `tour_inquiries`
 | Column | Type | Constraints | Description |
 | :--- | :--- | :--- | :--- |
 | `id` | UUID | PRIMARY KEY | Unique ID |
-| `reference_code` | TEXT | NOT NULL, UNIQUE | E.g. "NL-2026-8492" |
-| `tour_id` | UUID | REFERENCES tours(id) | Tour requested |
-| `full_name` | TEXT | NOT NULL | Visitor full name |
-| `email` | TEXT | NOT NULL | Contact email |
-| `phone` | TEXT | NOT NULL | Contact mobile number |
+| `reference_code` | TEXT | NOT NULL, UNIQUE | E.g. "NL-2026-104882" |
+| `tour_id` | UUID | NOT NULL, REFERENCES `tours(id)` | Requested package |
+| `user_id` | UUID | NULLABLE, REFERENCES `users(id)` | Signed-in visitor, when known |
+| `full_name` | TEXT | NOT NULL | Visitor name |
+| `email` | TEXT | NOT NULL, format check | Reply address |
+| `phone` | TEXT | NULLABLE | Contact number |
 | `target_date` | DATE | NOT NULL | Intended visit date |
-| `party_size` | INTEGER | NOT NULL | Number of guests |
-| `status` | ENUM | DEFAULT 'PENDING' | PENDING, CONTACTED, CONFIRMED, REJECTED |
-| `notes` | TEXT | NULLABLE | Visitor remarks / special needs |
-| `created_at` | TIMESTAMPTZ | DEFAULT NOW() | Submission time |
+| `party_size` | INTEGER | NOT NULL, 1–60 | Number of guests |
+| `notes` | TEXT | NULLABLE | Special requests |
+| `status` | `inquiry_status` | NOT NULL, DEFAULT `'PENDING'` | PENDING, CONTACTED, CONFIRMED, DECLINED |
+| `created_at` / `updated_at` | TIMESTAMPTZ | NOT NULL, DEFAULT `now()` | Timestamps |
 
 #### `advisories`
 | Column | Type | Constraints | Description |
 | :--- | :--- | :--- | :--- |
 | `id` | UUID | PRIMARY KEY | Unique ID |
-| `title` | TEXT | NOT NULL | Advisory headline |
+| `author_id` | UUID | NULLABLE, REFERENCES `users(id)` | Staff member who published it |
+| `title` | TEXT | NOT NULL | Headline |
 | `slug` | TEXT | NOT NULL, UNIQUE | URL slug |
-| `severity` | ENUM | NOT NULL | CRITICAL, WARNING, INFO |
-| `content` | TEXT | NOT NULL | Full article / advisory text |
-| `is_active_banner`| BOOLEAN | DEFAULT FALSE | Whether shown in global banner |
-| `published_at` | TIMESTAMPTZ | DEFAULT NOW() | Date published |
+| `severity` | `advisory_severity` | NOT NULL | CRITICAL, WARNING, INFO |
+| `excerpt` | TEXT | NOT NULL | Summary shown in feeds |
+| `content` | TEXT | NOT NULL | Full advisory body |
+| `is_active_banner` | BOOLEAN | NOT NULL, DEFAULT FALSE | Pins it to the site-wide banner |
+| `published_at` | TIMESTAMPTZ | NOT NULL, DEFAULT `now()` | Publication date |
 
 #### `subscribers`
 | Column | Type | Constraints | Description |
 | :--- | :--- | :--- | :--- |
 | `id` | UUID | PRIMARY KEY | Unique ID |
-| `email` | TEXT | NOT NULL, UNIQUE | Subscriber email address |
-| `status` | ENUM | DEFAULT 'ACTIVE' | ACTIVE, UNSUBSCRIBED |
-| `subscribed_at` | TIMESTAMPTZ | DEFAULT NOW() | Date joined |
+| `email` | TEXT | NOT NULL, UNIQUE, format check | Subscriber address |
+| `status` | `subscriber_status` | NOT NULL, DEFAULT `'ACTIVE'` | ACTIVE, UNSUBSCRIBED |
+| `topics` | TEXT[] | NOT NULL, DEFAULT `{advisories}` | Advisory, migration and promo preferences |
+| `subscribed_at` | TIMESTAMPTZ | NOT NULL, DEFAULT `now()` | Date joined |
+
+### 7.4 Access Control
+
+Row-level security is enabled on all seven tables and enforced by a single helper, `public.is_admin()`, which resolves `auth.uid()` to `users.role`.
+
+| Table | Public / anon | Authenticated visitor | Staff (`admin`) |
+| :--- | :--- | :--- | :--- |
+| `categories`, `species` | Read | Read | Full |
+| `tours` | Read where `is_active` | Read where `is_active` | Full |
+| `advisories` | Read where `published_at <= now()` | Same | Full |
+| `users` | — | Read/update own row | Full |
+| `tour_inquiries` | Insert (public form) | Read own (by `user_id` or email claim) | Full |
+| `subscribers` | Insert | Insert | Read all |
 
 ---
 
