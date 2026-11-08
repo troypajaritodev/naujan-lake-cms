@@ -115,6 +115,61 @@ export function getAllInquiries(): Inquiry[] {
   return getInquiries().sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
 
+const EMPTY: Inquiry[] = [];
+const listeners = new Set<() => void>();
+
+function emit() {
+  for (const listener of listeners) listener();
+}
+
+/** Subscribe to inquiry changes (new submission or a status edit). */
+export function subscribeInquiries(listener: () => void): () => void {
+  listeners.add(listener);
+  return () => listeners.delete(listener);
+}
+
+function sortRaw(raw: string | null): Inquiry[] {
+  if (!raw) return EMPTY;
+
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return EMPTY;
+    return (parsed as Inquiry[]).sort((a, b) =>
+      b.createdAt.localeCompare(a.createdAt),
+    );
+  } catch {
+    return EMPTY;
+  }
+}
+
+let snapshotKey: string | null = null;
+let snapshotValue: Inquiry[] = EMPTY;
+
+/**
+ * Cached snapshot for `useSyncExternalStore` — the same array reference is
+ * returned until the stored inquiries actually change.
+ */
+export function getInquiriesSnapshot(): Inquiry[] {
+  if (!canUseStorage()) return EMPTY;
+
+  let raw = window.localStorage.getItem(INQUIRIES_KEY);
+  if (raw === null) {
+    getInquiries(); // seeds the demo rows on first run
+    raw = window.localStorage.getItem(INQUIRIES_KEY);
+  }
+
+  if (raw !== snapshotKey) {
+    snapshotKey = raw;
+    snapshotValue = sortRaw(raw);
+  }
+
+  return snapshotValue;
+}
+
+export function getServerInquiriesSnapshot(): Inquiry[] {
+  return EMPTY;
+}
+
 export function setInquiryStatus(
   id: string,
   status: InquiryStatus,
@@ -127,6 +182,7 @@ export function setInquiryStatus(
     window.localStorage.setItem(INQUIRIES_KEY, JSON.stringify(next));
   }
 
+  emit();
   return next.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
 
@@ -159,5 +215,6 @@ export function createInquiry(input: InquiryInput): Inquiry {
     );
   }
 
+  emit();
   return inquiry;
 }
