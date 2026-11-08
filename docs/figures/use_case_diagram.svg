@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 880" width="1200" height="880" role="img" aria-labelledby="diagram-title diagram-desc">
+<title id="diagram-title">Use Case Diagram — Naujan Lake Visitor Hub</title>
+<desc id="diagram-desc">Visitor and park staff actors with their use cases inside the system boundary.</desc>
+<rect width="1200" height="880" fill="#fbfaf6"/>
+<text x="40.0" y="46.0" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="22" font-weight="600" fill="#0c1a17" text-anchor="start">Use Case Diagram</text>
+<text x="40.0" y="68.0" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="11.5" font-weight="400" fill="#8d7a61" text-anchor="start">Naujan Lake Visitor Hub · two roles (Requirement G) · solid line = association, dashed arrow = «include»</text>
+<line x1="40.0" y1="80.0" x2="1160.0" y2="80.0" stroke="#d8ceba" stroke-width="1" stroke-linecap="round"/>
+<rect x="300.0" y="120.0" width="600.0" height="660.0" rx="16" fill="#ffffff" stroke="#d8ceba" stroke-width="1.3" />
+<text x="600.0" y="150.0" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="13" font-weight="600" fill="#6f5f4c" text-anchor="middle" letter-spacing="1.2">Naujan Lake Visitor Hub</text>
+<text x="600.0" y="168.0" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="10" font-weight="400" fill="#8d7a61" text-anchor="middle">web portal · admin CMS · Supabase</text>
+<line x1="174.0" y1="380.0" x2="334.0" y2="216.0" stroke="#d8ceba" stroke-width="1.2" stroke-linecap="butt"/>
+<line x1="174.0" y1="380.0" x2="334.0" y2="298.0" stroke="#d8ceba" stroke-width="1.2" stroke-linecap="butt"/>
+<line x1="174.0" y1="380.0" x2="334.0" y2="380.0" stroke="#d8ceba" stroke-width="1.2" stroke-linecap="butt"/>
+<line x1="174.0" y1="380.0" x2="334.0" y2="462.0" stroke="#d8ceba" stroke-width="1.2" stroke-linecap="butt"/>
+<line x1="174.0" y1="380.0" x2="334.0" y2="556.0" stroke="#d8ceba" stroke-width="1.2" stroke-linecap="butt"/>
+<line x1="174.0" y1="380.0" x2="334.0" y2="646.0" stroke="#d8ceba" stroke-width="1.2" stroke-linecap="butt"/>
+<line x1="1026.0" y1="380.0" x2="866.0" y2="216.0" stroke="#d8ceba" stroke-width="1.2" stroke-linecap="butt"/>
+<line x1="1026.0" y1="380.0" x2="866.0" y2="298.0" stroke="#d8ceba" stroke-width="1.2" stroke-linecap="butt"/>
+<line x1="1026.0" y1="380.0" x2="866.0" y2="380.0" stroke="#d8ceba" stroke-width="1.2" stroke-linecap="butt"/>
+<line x1="1026.0" y1="380.0" x2="866.0" y2="462.0" stroke="#d8ceba" stroke-width="1.2" stroke-linecap="butt"/>
+<line x1="1026.0" y1="380.0" x2="866.0" y2="556.0" stroke="#d8ceba" stroke-width="1.2" stroke-linecap="butt"/>
+<path d="M 552 528 Q 640 509 552 490" fill="none" stroke="#276c6b" stroke-width="1.5" stroke-dasharray="5 4"/>
+<path d="M 552 488 L 546 498 L 558 498 Z" fill="#276c6b"/>
+<text x="544.0" y="513.0" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="9" font-weight="600" fill="#276c6b" text-anchor="end">«include»</text>
+<ellipse cx="450" cy="216" rx="116" ry="28" fill="#ffffff" stroke="#276c6b" stroke-width="1.3"/><text x="450.0" y="220.0" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="11" font-weight="400" fill="#0c1a17" text-anchor="middle">Browse tour packages</text>
+<ellipse cx="450" cy="298" rx="116" ry="28" fill="#ffffff" stroke="#276c6b" stroke-width="1.3"/><text x="450.0" y="302.0" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="11" font-weight="400" fill="#0c1a17" text-anchor="middle">Read guidelines &amp; zoning</text>
+<ellipse cx="450" cy="380" rx="116" ry="28" fill="#ffffff" stroke="#276c6b" stroke-width="1.3"/><text x="450.0" y="384.0" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="11" font-weight="400" fill="#0c1a17" text-anchor="middle">Register account</text>
+<ellipse cx="450" cy="462" rx="116" ry="28" fill="#ffffff" stroke="#276c6b" stroke-width="1.3"/><text x="450.0" y="466.0" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="11" font-weight="400" fill="#0c1a17" text-anchor="middle">Sign in</text>
+<ellipse cx="450" cy="556" rx="116" ry="28" fill="#ffffff" stroke="#276c6b" stroke-width="1.3"/><text x="450.0" y="560.0" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="11" font-weight="400" fill="#0c1a17" text-anchor="middle">Submit booking inquiry</text>
+<ellipse cx="450" cy="646" rx="116" ry="28" fill="#ffffff" stroke="#276c6b" stroke-width="1.3"/><text x="450.0" y="650.0" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="11" font-weight="400" fill="#0c1a17" text-anchor="middle">Manage profile</text>
+<ellipse cx="750" cy="216" rx="116" ry="28" fill="#ffffff" stroke="#276c6b" stroke-width="1.3"/><text x="750.0" y="220.0" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="11" font-weight="400" fill="#0c1a17" text-anchor="middle">Manage users &amp; roles</text>
+<ellipse cx="750" cy="298" rx="116" ry="28" fill="#ffffff" stroke="#276c6b" stroke-width="1.3"/><text x="750.0" y="302.0" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="11" font-weight="400" fill="#0c1a17" text-anchor="middle">Triage inquiries</text>
+<ellipse cx="750" cy="380" rx="116" ry="28" fill="#ffffff" stroke="#276c6b" stroke-width="1.3"/><text x="750.0" y="384.0" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="11" font-weight="400" fill="#0c1a17" text-anchor="middle">View reports</text>
+<ellipse cx="750" cy="462" rx="116" ry="28" fill="#ffffff" stroke="#276c6b" stroke-width="1.3"/><text x="750.0" y="466.0" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="11" font-weight="400" fill="#0c1a17" text-anchor="middle">Publish advisories</text>
+<ellipse cx="750" cy="556" rx="116" ry="28" fill="#ffffff" stroke="#276c6b" stroke-width="1.3"/><text x="750.0" y="560.0" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="11" font-weight="400" fill="#0c1a17" text-anchor="middle">Manage tour packages</text>
+<circle cx="150" cy="348" r="12" fill="none" stroke="#08211f" stroke-width="1.8"/><line x1="150.0" y1="360.0" x2="150.0" y2="388.0" stroke="#08211f" stroke-width="1.8" stroke-linecap="round"/><line x1="133.0" y1="372.0" x2="167.0" y2="372.0" stroke="#08211f" stroke-width="1.8" stroke-linecap="round"/><line x1="150.0" y1="388.0" x2="137.0" y2="412.0" stroke="#08211f" stroke-width="1.8" stroke-linecap="round"/><line x1="150.0" y1="388.0" x2="163.0" y2="412.0" stroke="#08211f" stroke-width="1.8" stroke-linecap="round"/><text x="150.0" y="434.0" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="12.5" font-weight="600" fill="#0c1a17" text-anchor="middle">Visitor</text>
+<circle cx="1050" cy="348" r="12" fill="none" stroke="#08211f" stroke-width="1.8"/><line x1="1050.0" y1="360.0" x2="1050.0" y2="388.0" stroke="#08211f" stroke-width="1.8" stroke-linecap="round"/><line x1="1033.0" y1="372.0" x2="1067.0" y2="372.0" stroke="#08211f" stroke-width="1.8" stroke-linecap="round"/><line x1="1050.0" y1="388.0" x2="1037.0" y2="412.0" stroke="#08211f" stroke-width="1.8" stroke-linecap="round"/><line x1="1050.0" y1="388.0" x2="1063.0" y2="412.0" stroke="#08211f" stroke-width="1.8" stroke-linecap="round"/><text x="1050.0" y="434.0" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="12.5" font-weight="600" fill="#0c1a17" text-anchor="middle">Park staff</text>
+<text x="150.0" y="454.0" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="9.5" font-weight="400" fill="#8d7a61" text-anchor="middle">customer role</text>
+<text x="1050.0" y="454.0" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="9.5" font-weight="400" fill="#8d7a61" text-anchor="middle">administrator role</text>
+<line x1="40.0" y1="820.0" x2="1160.0" y2="820.0" stroke="#d8ceba" stroke-width="1" stroke-linecap="round"/>
+<text x="40.0" y="844.0" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="10.5" font-weight="400" fill="#384744" text-anchor="start">Implemented in this build: browse packages, guidelines, register, sign in, submit inquiry, manage profile, manage users, triage inquiries, view reports.</text>
+<text x="1160.0" y="844.0" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="10" font-weight="400" fill="#8d7a61" text-anchor="end">Generated by scripts/build_use_case_diagram.py</text>
+</svg>
