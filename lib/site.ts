@@ -158,54 +158,14 @@ export const overviewFacts = [
   },
 ] as const;
 
-export type AdvisorySeverity = "CRITICAL" | "WARNING" | "INFO";
-
-export type AdvisoryPreview = {
-  slug: string;
-  title: string;
-  severity: AdvisorySeverity;
-  severityLabel: string;
-  /** ISO date for <time dateTime>. */
-  dateISO: string;
-  /** Pre-formatted label so rendering stays deterministic. */
-  date: string;
-  excerpt: string;
-};
-
 /**
- * Placeholder advisories until the CMS is connected (PRD Module 4).
- * Replace with Supabase rows; shape mirrors the `advisories` table.
+ * Advisories live in their own module now that they have a list page and a
+ * detail route. Re-exported here so existing imports keep working.
  */
-export const latestAdvisories: AdvisoryPreview[] = [
-  {
-    slug: "waterbird-arrivals-eastern-marsh",
-    title: "Migratory waterbirds begin arriving on the eastern marsh",
-    severity: "INFO",
-    severityLabel: "Seasonal",
-    dateISO: "2026-10-14",
-    date: "14 Oct 2026",
-    excerpt:
-      "Early flocks of egrets and ducks have been recorded ahead of the usual November peak. Birdwatching boats are advised to keep distance from feeding groups.",
-  },
-  {
-    slug: "boat-speed-restricted-river-mouths",
-    title: "Boat speed restricted at the northern river mouths",
-    severity: "WARNING",
-    severityLabel: "Warning",
-    dateISO: "2026-10-09",
-    date: "09 Oct 2026",
-    excerpt:
-      "Sustained rain has raised water levels and pushed debris into the channels. Operators must reduce speed and keep to the marked route.",
-  },
-  {
-    slug: "waterbird-census-volunteer-briefing",
-    title: "Volunteer briefing for the Asian Waterbird Census",
-    severity: "INFO",
-    severityLabel: "Info",
-    dateISO: "2026-09-28",
-    date: "28 Sep 2026",
-    excerpt:
-      "Students and researchers joining the January count are invited to the orientation at the park office. Bring binoculars and a field notebook.",
-  },
-];
+export type {
+  Advisory,
+  AdvisoryPreview,
+  AdvisorySeverity,
+} from "@/lib/advisories";
+export { latestAdvisories } from "@/lib/advisories";
 
