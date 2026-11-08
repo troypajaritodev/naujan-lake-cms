@@ -3,14 +3,20 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
-import { ArrowUpRight, Clock, MapPin, Menu, Phone, X } from "lucide-react";
+import { ArrowUpRight, Clock, MapPin, Menu, Phone, User, X } from "lucide-react";
 import BrandMark from "@/components/brand-mark";
+import { useAuth } from "@/components/auth-provider";
 import { navigation, site } from "@/lib/site";
 
 export default function SiteHeader() {
   const pathname = usePathname();
   const [scrolled, setScrolled] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const { user, ready } = useAuth();
+
+  const accountLabel =
+    ready && user ? user.fullName.split(" ")[0] : "Sign in";
+  const accountHref = ready && user ? "/account" : "/login";
 
   const isHome = pathname === "/";
   // Floats over the hero photo until the page scrolls or the drawer opens.
@@ -142,6 +148,16 @@ export default function SiteHeader() {
 
         <div className="flex items-center gap-2">
           <Link
+            href={accountHref}
+            className={`hidden items-center gap-1.5 rounded-full px-3 py-2 text-[13px] font-medium transition-colors duration-300 sm:inline-flex ${
+              onDark ? "text-sand-100/80 hover:text-white" : "text-ink-soft hover:text-ink"
+            }`}
+          >
+            <User className="size-4" strokeWidth={1.8} aria-hidden="true" />
+            {accountLabel}
+          </Link>
+
+          <Link
             href="/inquire"
             className={`hidden items-center gap-2 rounded-full px-5 py-2.5 text-[13px] font-semibold transition-all duration-300 sm:inline-flex ${
               onDark
@@ -221,6 +237,15 @@ export default function SiteHeader() {
           </nav>
 
           <div className="mt-10 space-y-4">
+            <Link
+              href={accountHref}
+              tabIndex={menuOpen ? 0 : -1}
+              onClick={() => setMenuOpen(false)}
+              className="flex w-full items-center justify-center gap-2 rounded-full border border-white/25 px-5 py-3.5 text-sm font-semibold text-sand-50"
+            >
+              <User className="size-4" strokeWidth={2} aria-hidden="true" />
+              {ready && user ? `Signed in as ${accountLabel}` : "Sign in"}
+            </Link>
             <Link
               href="/inquire"
               tabIndex={menuOpen ? 0 : -1}
