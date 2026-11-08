@@ -23,6 +23,73 @@ export type Inquiry = {
 
 export const INQUIRIES_KEY = "nl.inquiries.v1";
 
+/**
+ * Demo requests so the admin dashboard has something to report on before a
+ * real booking comes through. Replaced by the `tour_inquiries` table later.
+ */
+const SEED_INQUIRIES: Inquiry[] = [
+  {
+    id: "inq_seed_1",
+    reference: "NL-2026-104882",
+    userEmail: "visitor@example.com",
+    fullName: "Demo Visitor",
+    email: "visitor@example.com",
+    phone: "+63 917 000 0002",
+    tourSlug: "sunrise-boat-tour",
+    tourTitle: "Sunrise boat tour",
+    preferredDate: "2026-11-14",
+    partySize: 2,
+    message: "Coming from Calapan, can we leave a motorbike at the jetty?",
+    status: "PENDING",
+    createdAt: "2026-11-06T09:12:00.000Z",
+  },
+  {
+    id: "inq_seed_2",
+    reference: "NL-2026-103417",
+    userEmail: "ana.reyes@example.com",
+    fullName: "Ana Reyes",
+    email: "ana.reyes@example.com",
+    phone: "+63 918 442 1180",
+    tourSlug: "guided-birdwatching-expedition",
+    tourTitle: "Guided birdwatching expedition",
+    preferredDate: "2026-11-21",
+    partySize: 4,
+    message: "Two of us have binoculars already.",
+    status: "CONFIRMED",
+    createdAt: "2026-11-02T07:40:00.000Z",
+  },
+  {
+    id: "inq_seed_3",
+    reference: "NL-2026-101905",
+    userEmail: "carlo.mendoza@example.com",
+    fullName: "Carlo Mendoza",
+    email: "carlo.mendoza@example.com",
+    phone: "+63 920 118 7743",
+    tourSlug: "lakeside-community-homestay",
+    tourTitle: "Lakeside community homestay",
+    preferredDate: "2026-10-25",
+    partySize: 3,
+    message: "",
+    status: "CONFIRMED",
+    createdAt: "2026-10-18T15:05:00.000Z",
+  },
+  {
+    id: "inq_seed_4",
+    reference: "NL-2026-100233",
+    userEmail: "liza.bautista@example.com",
+    fullName: "Liza Bautista",
+    email: "liza.bautista@example.com",
+    phone: "+63 915 903 2214",
+    tourSlug: "educational-research-trek",
+    tourTitle: "Educational research trek",
+    preferredDate: "2026-10-11",
+    partySize: 12,
+    message: "Grade 11 field class, two teachers accompanying.",
+    status: "DECLINED",
+    createdAt: "2026-10-04T11:20:00.000Z",
+  },
+];
+
 function canUseStorage() {
   return typeof window !== "undefined" && "localStorage" in window;
 }
@@ -32,11 +99,35 @@ export function getInquiries(): Inquiry[] {
 
   try {
     const raw = window.localStorage.getItem(INQUIRIES_KEY);
-    const parsed = raw ? JSON.parse(raw) : [];
+    if (!raw) {
+      window.localStorage.setItem(INQUIRIES_KEY, JSON.stringify(SEED_INQUIRIES));
+      return [...SEED_INQUIRIES];
+    }
+    const parsed = JSON.parse(raw);
     return Array.isArray(parsed) ? (parsed as Inquiry[]) : [];
   } catch {
     return [];
   }
+}
+
+/** Every inquiry, newest first — used by the admin dashboard. */
+export function getAllInquiries(): Inquiry[] {
+  return getInquiries().sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+}
+
+export function setInquiryStatus(
+  id: string,
+  status: InquiryStatus,
+): Inquiry[] {
+  const next = getInquiries().map((inquiry) =>
+    inquiry.id === id ? { ...inquiry, status } : inquiry,
+  );
+
+  if (canUseStorage()) {
+    window.localStorage.setItem(INQUIRIES_KEY, JSON.stringify(next));
+  }
+
+  return next.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
 
 export function getInquiriesFor(email: string): Inquiry[] {

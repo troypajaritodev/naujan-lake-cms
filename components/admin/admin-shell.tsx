@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, type ReactNode } from "react";
-import { ArrowUpRight, Loader2, LogOut, Users } from "lucide-react";
+import { ArrowUpRight, Inbox, Loader2, LogOut, Users } from "lucide-react";
 import BrandMark from "@/components/brand-mark";
 import { useAuth } from "@/components/auth-provider";
 
@@ -13,6 +13,12 @@ const navigation = [
     label: "Users",
     hint: "Accounts, roles and access",
     icon: Users,
+  },
+  {
+    href: "/admin/inquiries",
+    label: "Inquiries",
+    hint: "Requests and reports",
+    icon: Inbox,
   },
 ];
 
