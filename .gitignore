@@ -41,8 +41,6 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-/lib/generated/prisma
-
 # workbuddy project notes and requirement documents
 .workbuddy-ai/
 *.docx

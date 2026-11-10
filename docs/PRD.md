@@ -4,7 +4,7 @@
 - **Project Name:** Naujan Lake Eco-Tourism & Wildlife Information Management System (Visitor Hub)
 - **Target Location:** Naujan Lake National Park (Ramsar Site No. 1008), Oriental Mindoro, Philippines
 - **Document Version:** 1.1.0
-- **Status:** Phase 1 & 2 implemented · Phase 3 planned
+- **Status:** Phase 1 & 2 implemented · Phase 3 in progress (Supabase read layer shipped)
 - **Author:** Troy R. Pajarito
 - **Tech Stack:** Next.js 16 (App Router, Turbopack), React 19, TypeScript, Tailwind CSS v4, Supabase (PostgreSQL, Auth, Storage)
 - **Related documents:** [Business Model & Revenue Plan](./REVENUE_MODEL.md) · [Database schema](../supabase/schema.sql) · [ER diagram](./figures/er_diagram.svg) · [Use case diagram](./figures/use_case_diagram.svg)
@@ -511,6 +511,7 @@ evidence base for the volume assumptions in the revenue model (§6).
 
 | Use case | Route / source | Status |
 | :--- | :--- | :--- |
+| Read catalogue from Supabase | `lib/species.ts`, `lib/tours.ts`, `lib/advisories.ts` | Implemented (seed fallback in demo mode) |
 | Browse tour packages | `/tours`, `/tours/[slug]` | Implemented |
 | Read guidelines & zoning | `/guidelines` | Implemented |
 | Register account | `/register` | Implemented |

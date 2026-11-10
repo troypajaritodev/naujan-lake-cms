@@ -8,7 +8,7 @@ Course and Section: BSIT-3F3
 
 Project Description: The proposed system can generate income through eco-tourism packages, promotional listings for local tourism businesses, membership subscriptions, and partnerships with tour guides and local establishments. The platform may also provide paid promotional features for accredited resorts, restaurants, tour operators, and other tourism-related businesses. These revenue sources can help support the maintenance, hosting, content management, and future development of the system while promoting Naujan Lake as an eco-tourism destination.
 
-Technologies Used: Next.js TypeScript
+Technologies Used: Next.js 16 (App Router, Turbopack), React 19, TypeScript 5, Tailwind CSS v4, Supabase (PostgreSQL + PostgREST), lucide-react.
 
 ---
 
@@ -20,6 +20,15 @@ npm run dev      # http://localhost:3000
 npm run build    # production build
 npm run lint     # eslint
 ```
+
+## Status
+
+Phase 1 (public portal) and Phase 2 (admin shell) are implemented. Phase 3 is in
+progress: the Supabase read layer has shipped and admin CRUD is next. The
+per-use-case status table lives in
+[`docs/PRD.md` §12.4](./docs/PRD.md#124-implementation-status).
+
+No database or `.env.local` is required to run the site — see *Data layer* below.
 
 ## Data layer
 
