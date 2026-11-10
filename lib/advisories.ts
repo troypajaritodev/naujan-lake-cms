@@ -137,6 +137,28 @@ const seedAdvisories: Advisory[] = [
     ],
   },
   {
+    slug: "gale-warning-boat-suspension",
+    title: "Boat operations suspended under a gale warning",
+    severity: "CRITICAL",
+    severityLabel: "Closure",
+    category: "Operations",
+    publishedAt: "2026-11-09",
+    effectiveUntil: "2026-11-12",
+    excerpt:
+      "PAGASA has raised a gale warning for the Naujan coast. All boat tours and lake crossings are suspended until the warning is lifted.",
+    body: [
+      "The park office has suspended all boat departures after PAGASA raised a gale warning for the Oriental Mindoro coast. This covers guided tours, research crossings and private landings.",
+      "The shoreline trail and the viewing deck stay open while conditions allow. Do not move beyond the marked barrier at the jetty.",
+      "The suspension is reviewed every morning at 6:00 AM. Bookings already confirmed are moved to the next safe departure at no extra cost.",
+    ],
+    actions: [
+      "Do not board or launch any boat until the park office lifts the suspension.",
+      "Call the park office before travelling if you have a booking this week.",
+      "Follow the marked barrier at the jetty and keep children away from the water.",
+    ],
+    isActiveBanner: true,
+  },
+  {
     slug: "reed-bed-nesting-closure",
     title: "Reed beds closed to landing during the nesting season",
     severity: "WARNING",
@@ -307,4 +329,23 @@ export async function getRelatedAdvisories(
 
   const advisories = await getSortedAdvisories();
   return advisories.filter((advisory) => advisory.slug !== slug).slice(0, limit);
+}
+
+/**
+ * The notice that pins the site-wide banner (FR-4.2). A staff-pinned advisory
+ * wins; otherwise the newest CRITICAL notice is shown automatically so an
+ * emergency never waits for someone to tick a box.
+ */
+export async function getBannerAdvisory(): Promise<AdvisoryPreview | null> {
+  "use cache";
+  cacheLife("hours");
+  cacheTag("advisories");
+
+  const advisories = await getSortedAdvisories();
+  const chosen =
+    advisories.find((advisory) => advisory.isActiveBanner) ??
+    advisories.find((advisory) => advisory.severity === "CRITICAL") ??
+    null;
+
+  return chosen ? toAdvisoryPreview(chosen) : null;
 }
