@@ -5,7 +5,7 @@ import AdvisoryBadge from "@/components/advisory-badge";
 import SectionHeading from "@/components/section-heading";
 import {
   formatAdvisoryDate,
-  sortedAdvisories,
+  getSortedAdvisories,
   type AdvisorySeverity,
 } from "@/lib/advisories";
 
@@ -18,13 +18,15 @@ export const metadata: Metadata = {
 
 const severityOrder: AdvisorySeverity[] = ["CRITICAL", "WARNING", "INFO"];
 
-const severityCounts = severityOrder.map((severity) => ({
-  severity,
-  count: sortedAdvisories.filter((advisory) => advisory.severity === severity)
-    .length,
-}));
+export default async function AdvisoriesPage() {
+  const advisories = await getSortedAdvisories();
 
-export default function AdvisoriesPage() {
+  const severityCounts = severityOrder.map((severity) => ({
+    severity,
+    count: advisories.filter((advisory) => advisory.severity === severity)
+      .length,
+  }));
+
   return (
     <>
       <section className="relative isolate overflow-hidden bg-lake-950 pt-32 pb-16 lg:pt-40 lg:pb-20">
@@ -88,7 +90,7 @@ export default function AdvisoriesPage() {
           />
 
           <ul className="mt-12 grid gap-4 lg:grid-cols-2">
-            {sortedAdvisories.map((advisory) => (
+            {advisories.map((advisory) => (
               <li key={advisory.slug}>
                 <Link
                   href={`/advisories/${advisory.slug}`}

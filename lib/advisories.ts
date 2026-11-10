@@ -1,10 +1,19 @@
 /**
  * Park advisories (PRD Module 4 / FR-4.1).
  *
- * Mirrors the `advisories` table in `supabase/schema.sql`. Dates are stored as
- * ISO strings and formatted with a fixed table so the output is identical on
- * the server and in the browser.
+ * Reads the `advisories` table when Supabase is configured, otherwise the seed
+ * notices below. Dates are stored as ISO strings and formatted with a fixed
+ * table so the output is identical on the server and in the browser.
+ *
+ * The schema stores the body as one `content` column; paragraphs are split on
+ * blank lines. Fields the table does not carry yet — badge label, category,
+ * expiry and action list — fall back to neutral values until Milestone 2 adds
+ * them to the CMS.
  */
+
+import { cacheLife, cacheTag } from "next/cache";
+import { getSupabaseClient, type Tables } from "@/lib/supabase";
+import { fetchOrFallback, queryError } from "@/lib/supabase/query";
 
 export type AdvisorySeverity = "CRITICAL" | "WARNING" | "INFO";
 
@@ -23,6 +32,8 @@ export type Advisory = {
   body: string[];
   /** Concrete things a visitor has to do differently. */
   actions?: string[];
+  /** Pins the notice to the site-wide banner (FR-4.2). */
+  isActiveBanner?: boolean;
 };
 
 /** Shape consumed by the home-page preview list. */
@@ -61,7 +72,7 @@ export function formatAdvisoryDate(iso: string): string {
   return `${day} ${monthName} ${year}`;
 }
 
-export const advisories: Advisory[] = [
+const seedAdvisories: Advisory[] = [
   {
     slug: "waterbird-arrivals-eastern-marsh",
     title: "Migratory waterbirds begin arriving on the eastern marsh",
@@ -183,12 +194,18 @@ export const advisories: Advisory[] = [
   },
 ];
 
-/** Newest first — the order the list page and the preview both use. */
-export const sortedAdvisories: Advisory[] = [...advisories].sort((a, b) =>
-  b.publishedAt.localeCompare(a.publishedAt),
-);
+/** Badge label for a severity — the schema stores only the enum. */
+export const severityLabels: Record<AdvisorySeverity, string> = {
+  CRITICAL: "Critical",
+  WARNING: "Warning",
+  INFO: "Info",
+};
 
-function toPreview(advisory: Advisory): AdvisoryPreview {
+export function sortNewestFirst(list: Advisory[]): Advisory[] {
+  return [...list].sort((a, b) => b.publishedAt.localeCompare(a.publishedAt));
+}
+
+export function toAdvisoryPreview(advisory: Advisory): AdvisoryPreview {
   return {
     slug: advisory.slug,
     title: advisory.title,
@@ -200,16 +217,94 @@ function toPreview(advisory: Advisory): AdvisoryPreview {
   };
 }
 
-/** The three newest, for the home page. */
-export const latestAdvisories: AdvisoryPreview[] =
-  sortedAdvisories.slice(0, 3).map(toPreview);
-
-export function getAdvisory(slug: string): Advisory | undefined {
-  return advisories.find((advisory) => advisory.slug === slug);
+function toAdvisory(row: Tables<"advisories">): Advisory {
+  return {
+    slug: row.slug,
+    title: row.title,
+    severity: row.severity,
+    severityLabel: severityLabels[row.severity],
+    // The table has no category column yet; the CMS milestone adds it.
+    category: "Operations",
+    publishedAt: row.published_at.slice(0, 10),
+    excerpt: row.excerpt,
+    body: row.content
+      .split(/\n{2,}/)
+      .map((paragraph) => paragraph.trim())
+      .filter(Boolean),
+    isActiveBanner: row.is_active_banner,
+  };
 }
 
-export function relatedAdvisories(slug: string, limit = 3): Advisory[] {
-  return sortedAdvisories
-    .filter((advisory) => advisory.slug !== slug)
-    .slice(0, limit);
+/** Every published notice, newest first. */
+export async function getSortedAdvisories(): Promise<Advisory[]> {
+  "use cache";
+  cacheLife("hours");
+  cacheTag("advisories");
+
+  const client = getSupabaseClient();
+  if (!client) return sortNewestFirst(seedAdvisories);
+
+  return fetchOrFallback(
+    "advisories",
+    async () => {
+      const { data, error } = await client
+        .from("advisories")
+        .select("*")
+        .order("published_at", { ascending: false });
+
+      if (error) throw queryError("advisories", error.message);
+      return data && data.length > 0
+        ? data.map(toAdvisory)
+        : sortNewestFirst(seedAdvisories);
+    },
+    () => sortNewestFirst(seedAdvisories),
+  );
+}
+
+export async function getAdvisory(slug: string): Promise<Advisory | undefined> {
+  "use cache";
+  cacheLife("hours");
+  cacheTag("advisories");
+
+  const client = getSupabaseClient();
+  if (!client) {
+    return seedAdvisories.find((advisory) => advisory.slug === slug);
+  }
+
+  return fetchOrFallback(
+    `advisory ${slug}`,
+    async () => {
+      const { data, error } = await client
+        .from("advisories")
+        .select("*")
+        .eq("slug", slug)
+        .maybeSingle();
+
+      if (error) throw queryError("advisory", error.message);
+      return data ? toAdvisory(data) : undefined;
+    },
+    () => seedAdvisories.find((advisory) => advisory.slug === slug),
+  );
+}
+
+/** The newest notices, shaped for the home-page preview list. */
+export async function getLatestAdvisories(limit = 3): Promise<AdvisoryPreview[]> {
+  "use cache";
+  cacheLife("hours");
+  cacheTag("advisories");
+
+  const advisories = await getSortedAdvisories();
+  return advisories.slice(0, limit).map(toAdvisoryPreview);
+}
+
+export async function getRelatedAdvisories(
+  slug: string,
+  limit = 3,
+): Promise<Advisory[]> {
+  "use cache";
+  cacheLife("hours");
+  cacheTag("advisories");
+
+  const advisories = await getSortedAdvisories();
+  return advisories.filter((advisory) => advisory.slug !== slug).slice(0, limit);
 }

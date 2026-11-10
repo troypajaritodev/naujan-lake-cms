@@ -1,8 +1,15 @@
 /**
  * Eco-tourism packages (PRD Module 2 / FR-2.1–2.2).
- * Rates are placeholder tariffs in PHP, per person, inclusive of the
- * environmental fee — replace with the published schedule from the park office.
+ *
+ * Reads the `tours` table when Supabase is configured and falls back to the
+ * seed packages below in demo mode. Rates are placeholder tariffs in PHP, per
+ * person, inclusive of the environmental fee — replace with the published
+ * schedule from the park office.
  */
+
+import { cacheLife, cacheTag } from "next/cache";
+import { getSupabaseClient, type Tables } from "@/lib/supabase";
+import { fetchOrFallback, queryError } from "@/lib/supabase/query";
 
 export type TourDifficulty = "EASY" | "MODERATE" | "CHALLENGING";
 
@@ -42,7 +49,7 @@ export const difficultyLabel: Record<TourDifficulty, string> = {
   CHALLENGING: "Challenging",
 };
 
-export const tours: Tour[] = [
+const seedTours: Tour[] = [
   {
     slug: "guided-birdwatching-expedition",
     title: "Guided birdwatching expedition",
@@ -263,10 +270,116 @@ export const tours: Tour[] = [
   },
 ];
 
-export function getTour(slug: string): Tour | undefined {
-  return tours.find((tour) => tour.slug === slug);
-}
-
 export function tariffTotal(tour: Tour): number {
   return tour.tariff.reduce((sum, line) => sum + line.amount, 0);
+}
+
+/**
+ * Alt text for the packages that ship with a photograph. Uploaded images get a
+ * generic description until the CMS stores a per-image caption (FR-1.2).
+ */
+const IMAGE_ALT: Record<string, string> = {
+  "/images/ducklings.jpg":
+    "Philippine Duck and ducklings in shallow wetland water",
+  "/images/hero-lake.jpg":
+    "Open water and distant mountains under a wide sky at Naujan Lake",
+  "/images/shoreline.jpg":
+    "Shoreline vegetation and quiet water along Naujan Lake",
+  "/images/lake-canopy.jpg":
+    "Dense shoreline canopy meeting the water at Naujan Lake",
+};
+
+function toItinerary(value: unknown): ItineraryStop[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter(
+    (stop): stop is ItineraryStop =>
+      typeof stop === "object" &&
+      stop !== null &&
+      typeof (stop as ItineraryStop).time === "string" &&
+      typeof (stop as ItineraryStop).title === "string",
+  );
+}
+
+function toTariff(value: unknown): TariffLine[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter(
+    (line): line is TariffLine =>
+      typeof line === "object" &&
+      line !== null &&
+      typeof (line as TariffLine).label === "string" &&
+      typeof (line as TariffLine).amount === "number",
+  );
+}
+
+function toTour(row: Tables<"tours">): Tour {
+  return {
+    slug: row.slug,
+    title: row.title,
+    category: row.category,
+    summary: row.summary,
+    duration: row.duration,
+    departure: row.departure,
+    ratePerPerson: Number(row.rate_per_person),
+    maxCapacity: row.max_capacity,
+    difficulty: row.difficulty,
+    inclusions: row.inclusions ?? [],
+    image: row.featured_image,
+    imageAlt:
+      IMAGE_ALT[row.featured_image] ??
+      `${row.title} at Naujan Lake National Park`,
+    itinerary: toItinerary(row.itinerary),
+    tariff: toTariff(row.tariff),
+    bring: row.what_to_bring ?? [],
+    notes: row.notes ?? [],
+  };
+}
+
+/** Active packages, in the order the public listing shows them. */
+export async function getTours(): Promise<Tour[]> {
+  "use cache";
+  cacheLife("hours");
+  cacheTag("tours");
+
+  const client = getSupabaseClient();
+  if (!client) return seedTours;
+
+  return fetchOrFallback(
+    "tours",
+    async () => {
+      const { data, error } = await client
+        .from("tours")
+        .select("*")
+        .eq("is_active", true)
+        .order("title", { ascending: true });
+
+      if (error) throw queryError("tours", error.message);
+      return data && data.length > 0 ? data.map(toTour) : seedTours;
+    },
+    () => seedTours,
+  );
+}
+
+export async function getTour(slug: string): Promise<Tour | undefined> {
+  "use cache";
+  cacheLife("hours");
+  cacheTag("tours");
+
+  const client = getSupabaseClient();
+  if (!client) return seedTours.find((tour) => tour.slug === slug);
+
+  return fetchOrFallback(
+    `tour ${slug}`,
+    async () => {
+      const { data, error } = await client
+        .from("tours")
+        .select("*")
+        .eq("slug", slug)
+        .eq("is_active", true)
+        .maybeSingle();
+
+      if (error) throw queryError("tour", error.message);
+      return data ? toTour(data) : undefined;
+    },
+    () => seedTours.find((tour) => tour.slug === slug),
+  );
 }

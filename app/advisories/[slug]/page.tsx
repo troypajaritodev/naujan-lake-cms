@@ -4,10 +4,10 @@ import { notFound } from "next/navigation";
 import { ArrowLeft, ArrowUpRight, CalendarClock, Check } from "lucide-react";
 import AdvisoryBadge from "@/components/advisory-badge";
 import {
-  advisories,
   formatAdvisoryDate,
   getAdvisory,
-  relatedAdvisories,
+  getRelatedAdvisories,
+  getSortedAdvisories,
 } from "@/lib/advisories";
 
 type AdvisoryPageProps = {
@@ -22,7 +22,8 @@ type AdvisoryPageProps = {
  */
 export const instant = false;
 
-export function generateStaticParams() {
+export async function generateStaticParams() {
+  const advisories = await getSortedAdvisories();
   return advisories.map((advisory) => ({ slug: advisory.slug }));
 }
 
@@ -30,7 +31,7 @@ export async function generateMetadata({
   params,
 }: AdvisoryPageProps): Promise<Metadata> {
   const { slug } = await params;
-  const advisory = getAdvisory(slug);
+  const advisory = await getAdvisory(slug);
 
   if (!advisory) return { title: "Advisory not found" };
 
@@ -43,11 +44,11 @@ export async function generateMetadata({
 
 export default async function AdvisoryDetailPage({ params }: AdvisoryPageProps) {
   const { slug } = await params;
-  const advisory = getAdvisory(slug);
+  const advisory = await getAdvisory(slug);
 
   if (!advisory) notFound();
 
-  const related = relatedAdvisories(advisory.slug);
+  const related = await getRelatedAdvisories(advisory.slug);
 
   return (
     <>

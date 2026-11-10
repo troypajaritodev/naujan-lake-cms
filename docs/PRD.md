@@ -527,3 +527,9 @@ Authentication currently runs against a local account store (`lib/auth.ts`, salt
 digests, `localStorage` session) so the system can be demonstrated without a live Supabase
 project. `supabase/schema.sql` is the production target; switching `lib/auth.ts` for Supabase
 Auth is the remaining step for Requirement F.
+
+The read-only catalogue does not wait for that step: with `NEXT_PUBLIC_SUPABASE_URL` and
+`NEXT_PUBLIC_SUPABASE_ANON_KEY` set, `lib/species.ts`, `lib/tours.ts` and `lib/advisories.ts`
+query Supabase through the anon key (RLS still applies) and cache the result with Next.js
+`use cache`. Without those variables every getter serves the seed rows committed beside it, so
+the portal keeps working offline (see `README.md` → Data layer).

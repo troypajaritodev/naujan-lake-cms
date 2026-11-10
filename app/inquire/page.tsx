@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Suspense } from "react";
 import { ClipboardCheck, Clock3, Wallet } from "lucide-react";
 import InquiryForm from "@/components/inquire/inquiry-form";
+import { getTours } from "@/lib/tours";
 
 export const metadata: Metadata = {
   title: "Plan a visit",
@@ -35,7 +36,14 @@ type InquirePageProps = {
 /** Awaiting `searchParams` suspends, so it is isolated behind a Suspense boundary. */
 async function InquiryPanel({ searchParams }: InquirePageProps) {
   const { tour } = await searchParams;
-  return <InquiryForm initialTour={typeof tour === "string" ? tour : undefined} />;
+  const tours = await getTours();
+
+  return (
+    <InquiryForm
+      initialTour={typeof tour === "string" ? tour : undefined}
+      tours={tours}
+    />
+  );
 }
 
 export default function InquirePage({ searchParams }: InquirePageProps) {

@@ -15,7 +15,7 @@ import {
 import { AuthField } from "@/components/auth-shell";
 import { useAuth } from "@/components/auth-provider";
 import { AuthError, type SessionUser } from "@/lib/auth";
-import { getInquiriesFor } from "@/lib/inquiries";
+import { getInquiriesFor, type Inquiry } from "@/lib/inquiries";
 
 const dateFormat = new Intl.DateTimeFormat("en-PH", {
   day: "numeric",
@@ -71,7 +71,19 @@ function AccountDashboard({ user }: { user: SessionUser }) {
   const [passwordStatus, setPasswordStatus] = useState<"idle" | "saved">("idle");
   const [passwordPending, setPasswordPending] = useState(false);
 
-  const [inquiries] = useState(() => getInquiriesFor(user.email));
+  const [inquiries, setInquiries] = useState<Inquiry[]>([]);
+
+  useEffect(() => {
+    let active = true;
+
+    getInquiriesFor(user.email).then((list) => {
+      if (active) setInquiries(list);
+    });
+
+    return () => {
+      active = false;
+    };
+  }, [user.email]);
 
   function saveProfile(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();

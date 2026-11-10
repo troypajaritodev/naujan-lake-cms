@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
 import { ArrowRight, Clock, MapPin, Users } from "lucide-react";
-import { difficultyLabel, tours, type TourDifficulty } from "@/lib/tours";
+import { difficultyLabel, getTours, type TourDifficulty } from "@/lib/tours";
 
 export const metadata: Metadata = {
   title: "Eco-tours",
@@ -23,7 +23,9 @@ const peso = new Intl.NumberFormat("en-PH", {
   maximumFractionDigits: 0,
 });
 
-export default function ToursPage() {
+export default async function ToursPage() {
+  const tours = await getTours();
+
   return (
     <>
       <section className="relative isolate overflow-hidden bg-lake-950 pt-32 pb-16 lg:pt-40 lg:pb-20">

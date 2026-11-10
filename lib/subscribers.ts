@@ -1,9 +1,10 @@
 /**
  * Newsletter subscribers (PRD FR-4.3).
  *
- * Mirrors the `subscribers` table in `supabase/schema.sql`. Persisted in
- * `localStorage` until the CMS writes to Supabase — the same stand-in pattern
- * used by `lib/inquiries.ts`.
+ * Mirrors the `subscribers` table in `supabase/schema.sql`, but stays on the
+ * demo store until Supabase Auth (Milestone 4): the table lets anyone insert
+ * yet only staff may read the audience, so a live read would look empty to the
+ * admin panel. The API is asynchronous so that swap needs no callsite changes.
  */
 
 export type SubscriberStatus = "ACTIVE" | "UNSUBSCRIBED";
@@ -48,7 +49,7 @@ function canUseStorage() {
   return typeof window !== "undefined" && "localStorage" in window;
 }
 
-export function listSubscribers(): Subscriber[] {
+function readSubscribers(): Subscriber[] {
   if (!canUseStorage()) return [];
 
   try {
@@ -61,9 +62,13 @@ export function listSubscribers(): Subscriber[] {
   }
 }
 
-export function isSubscribed(email: string): boolean {
+export async function listSubscribers(): Promise<Subscriber[]> {
+  return readSubscribers();
+}
+
+export async function isSubscribed(email: string): Promise<boolean> {
   const normalized = email.trim().toLowerCase();
-  return listSubscribers().some(
+  return readSubscribers().some(
     (entry) => entry.email === normalized && entry.status === "ACTIVE",
   );
 }
@@ -74,10 +79,10 @@ export type SubscribeOutcome = "created" | "resubscribed" | "updated";
  * Adds or re-activates an address. Returns which of the three happened so the
  * form can say something specific instead of a generic "subscribed".
  */
-export function subscribe(
+export async function subscribe(
   email: string,
   topics: SubscriberTopic[],
-): { subscriber: Subscriber; outcome: SubscribeOutcome } {
+): Promise<{ subscriber: Subscriber; outcome: SubscribeOutcome }> {
   const normalized = email.trim().toLowerCase();
 
   if (!EMAIL_PATTERN.test(normalized)) {
@@ -87,7 +92,7 @@ export function subscribe(
     throw new SubscribeError("Pick at least one topic.", "topics");
   }
 
-  const subscribers = listSubscribers();
+  const subscribers = readSubscribers();
   const existing = subscribers.find((entry) => entry.email === normalized);
 
   let subscriber: Subscriber;
@@ -125,9 +130,9 @@ export function subscribe(
   return { subscriber, outcome };
 }
 
-export function unsubscribe(email: string): boolean {
+export async function unsubscribe(email: string): Promise<boolean> {
   const normalized = email.trim().toLowerCase();
-  const subscribers = listSubscribers();
+  const subscribers = readSubscribers();
   const index = subscribers.findIndex((entry) => entry.email === normalized);
 
   if (index === -1) return false;

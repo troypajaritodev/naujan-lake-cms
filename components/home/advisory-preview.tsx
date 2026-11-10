@@ -2,9 +2,11 @@ import Link from "next/link";
 import { ArrowUpRight } from "lucide-react";
 import AdvisoryBadge from "@/components/advisory-badge";
 import SectionHeading from "@/components/section-heading";
-import { latestAdvisories } from "@/lib/site";
+import { getLatestAdvisories } from "@/lib/advisories";
 
-export default function AdvisoryPreview() {
+export default async function AdvisoryPreview() {
+  const latestAdvisories = await getLatestAdvisories(3);
+
   return (
     <section className="bg-sand-50 py-20 lg:py-24">
       <div className="mx-auto w-full max-w-7xl px-5 sm:px-8 lg:px-12">

@@ -15,8 +15,8 @@ import {
 import {
   difficultyLabel,
   getTour,
+  getTours,
   tariffTotal,
-  tours,
   type TourDifficulty,
 } from "@/lib/tours";
 
@@ -36,7 +36,8 @@ const peso = new Intl.NumberFormat("en-PH", {
   maximumFractionDigits: 0,
 });
 
-export function generateStaticParams() {
+export async function generateStaticParams() {
+  const tours = await getTours();
   return tours.map((tour) => ({ slug: tour.slug }));
 }
 
@@ -44,7 +45,7 @@ export async function generateMetadata({
   params,
 }: TourPageProps): Promise<Metadata> {
   const { slug } = await params;
-  const tour = getTour(slug);
+  const tour = await getTour(slug);
 
   if (!tour) return { title: "Package not found" };
 
@@ -62,12 +63,15 @@ export async function generateMetadata({
 
 export default async function TourDetailPage({ params }: TourPageProps) {
   const { slug } = await params;
-  const tour = getTour(slug);
+  const tour = await getTour(slug);
 
   if (!tour) notFound();
 
   const total = tariffTotal(tour);
-  const others = tours.filter((entry) => entry.slug !== tour.slug).slice(0, 3);
+  const allTours = await getTours();
+  const others = allTours
+    .filter((entry) => entry.slug !== tour.slug)
+    .slice(0, 3);
 
   return (
     <>

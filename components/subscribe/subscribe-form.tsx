@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Check, Mail, RotateCcw } from "lucide-react";
+import { Check, Loader2, Mail, RotateCcw } from "lucide-react";
 import {
   subscribe,
   SubscribeError,
@@ -38,6 +38,7 @@ export default function SubscribeForm() {
   const [topics, setTopics] = useState<SubscriberTopic[]>(["advisories"]);
   const [errors, setErrors] = useState<{ email?: string; topics?: string }>({});
   const [result, setResult] = useState<Result | null>(null);
+  const [pending, setPending] = useState(false);
 
   function toggle(topic: SubscriberTopic) {
     setTopics((current) =>
@@ -48,11 +49,13 @@ export default function SubscribeForm() {
     setErrors((current) => ({ ...current, topics: undefined }));
   }
 
-  function onSubmit(event: React.FormEvent<HTMLFormElement>) {
+  async function onSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (pending) return;
 
+    setPending(true);
     try {
-      const { subscriber, outcome } = subscribe(email, topics);
+      const { subscriber, outcome } = await subscribe(email, topics);
       setResult({ email: subscriber.email, topics: subscriber.topics, outcome });
       setErrors({});
     } catch (error) {
@@ -61,6 +64,8 @@ export default function SubscribeForm() {
       } else {
         setErrors({ email: "Something went wrong. Try again." });
       }
+    } finally {
+      setPending(false);
     }
   }
 
@@ -205,9 +210,11 @@ export default function SubscribeForm() {
 
       <button
         type="submit"
-        className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-full bg-lake-900 px-5 py-3 text-[13.5px] font-semibold text-sand-50 transition-colors hover:bg-lake-800 focus-visible:ring-2 focus-visible:ring-lake-700/40 focus-visible:ring-offset-2 focus-visible:outline-none"
+        disabled={pending}
+        className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-full bg-lake-900 px-5 py-3 text-[13.5px] font-semibold text-sand-50 transition-colors hover:bg-lake-800 focus-visible:ring-2 focus-visible:ring-lake-700/40 focus-visible:ring-offset-2 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-60"
       >
-        Subscribe
+        {pending && <Loader2 className="size-4 animate-spin" strokeWidth={2} />}
+        {pending ? "Subscribing" : "Subscribe"}
       </button>
 
       <p className="mt-3 text-center text-[11.5px] leading-relaxed text-sand-600">

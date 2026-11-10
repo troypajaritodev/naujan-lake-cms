@@ -13,7 +13,7 @@ import { AuthField } from "@/components/auth-shell";
 import { useAuth } from "@/components/auth-provider";
 import type { SessionUser } from "@/lib/auth";
 import { createInquiry, type Inquiry } from "@/lib/inquiries";
-import { getTour, tours } from "@/lib/tours";
+import type { Tour } from "@/lib/tours";
 
 const peso = new Intl.NumberFormat("en-PH", {
   style: "currency",
@@ -27,7 +27,13 @@ const dateFormat = new Intl.DateTimeFormat("en-PH", {
   year: "numeric",
 });
 
-export default function InquiryForm({ initialTour }: { initialTour?: string }) {
+export default function InquiryForm({
+  initialTour,
+  tours,
+}: {
+  initialTour?: string;
+  tours: Tour[];
+}) {
   const { user, ready } = useAuth();
 
   if (!ready) {
@@ -72,21 +78,26 @@ export default function InquiryForm({ initialTour }: { initialTour?: string }) {
     );
   }
 
-  return <InquiryFields user={user} initialTour={initialTour} />;
+  return <InquiryFields user={user} initialTour={initialTour} tours={tours} />;
 }
 
 function InquiryFields({
   user,
   initialTour,
+  tours,
 }: {
   user: SessionUser;
   initialTour?: string;
+  tours: Tour[];
 }) {
   const [values, setValues] = useState({
     fullName: user.fullName,
     email: user.email,
     phone: user.phone,
-    tourSlug: initialTour && getTour(initialTour) ? initialTour : tours[0].slug,
+    tourSlug:
+      initialTour && tours.some((tour) => tour.slug === initialTour)
+        ? initialTour
+        : (tours[0]?.slug ?? ""),
     preferredDate: "",
     partySize: "2",
     message: "",
@@ -95,7 +106,25 @@ function InquiryFields({
   const [pending, setPending] = useState(false);
   const [sent, setSent] = useState<Inquiry | null>(null);
 
-  const selected = useMemo(() => getTour(values.tourSlug), [values.tourSlug]);
+  const selected = useMemo(
+    () => tours.find((tour) => tour.slug === values.tourSlug),
+    [tours, values.tourSlug],
+  );
+
+  if (tours.length === 0) {
+    return (
+      <div className="rounded-2xl bg-white p-7 ring-1 ring-ink/10 sm:p-9">
+        <h2 className="font-display text-[24px] leading-tight font-light text-ink">
+          No packages are open right now.
+        </h2>
+        <p className="mt-2 text-[13.5px] leading-relaxed text-ink-soft/80">
+          The park office has not published a tour package yet. Please check
+          back shortly or contact{" "}
+          <span className="font-medium text-ink">tours@naujanlake.gov.ph</span>.
+        </p>
+      </div>
+    );
+  }
 
   async function onSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -126,7 +155,7 @@ function InquiryFields({
     // A short pause so the pending state is visible; there is no server call yet.
     await new Promise((resolve) => setTimeout(resolve, 450));
 
-    const inquiry = createInquiry({
+    const inquiry = await createInquiry({
       userEmail: user.email,
       fullName: values.fullName.trim(),
       email: values.email.trim(),

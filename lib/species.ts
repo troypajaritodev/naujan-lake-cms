@@ -1,17 +1,24 @@
 /**
  * Wildlife catalogue (PRD FR-1.1 / FR-1.2).
  *
- * Mirrors the `categories` and `species` tables in `supabase/schema.sql` so the
- * page can be swapped onto Supabase rows without changing its shape. Records
- * are deliberately limited to species documented for Naujan Lake and the
- * Oriental Mindoro wetlands — no aquarium or zoo additions.
+ * Reads the `categories` and `species` tables from `supabase/schema.sql` when
+ * Supabase is configured. Without a project (`lib/supabase/config.ts`), every
+ * getter falls back to the seed rows below, so the portal still renders in
+ * demo mode. Records are deliberately limited to species documented for
+ * Naujan Lake and the Oriental Mindoro wetlands — no aquarium or zoo additions.
  */
+
+import { cacheLife, cacheTag } from "next/cache";
+import { getSupabaseClient, type Tables } from "@/lib/supabase";
+import { fetchOrFallback, queryError } from "@/lib/supabase/query";
 
 export type ConservationStatus = "CR" | "EN" | "VU" | "NT" | "LC" | "DD";
 
 export type Seasonality = "RESIDENT" | "MIGRATORY" | "SEASONAL";
 
 export type WildlifeGroup = {
+  /** Matches the `categories.id` UUID from the schema. */
+  id: string;
   slug: string;
   name: string;
   shortName: string;
@@ -46,8 +53,9 @@ export const seasonalityLabels: Record<Seasonality, string> = {
   SEASONAL: "Seasonal",
 };
 
-export const wildlifeGroups: WildlifeGroup[] = [
+const seedWildlifeGroups: WildlifeGroup[] = [
   {
+    id: "c1000000-0000-4000-8000-000000000001",
     slug: "waterbirds",
     name: "Waterbirds & migratory birds",
     shortName: "Waterbirds",
@@ -55,6 +63,7 @@ export const wildlifeGroups: WildlifeGroup[] = [
       "Herons, egrets, ducks and shorebirds recorded on the lake. Numbers peak between October and March, when birds on the East Asian–Australasian flyway drop onto the eastern marsh.",
   },
   {
+    id: "c1000000-0000-4000-8000-000000000002",
     slug: "freshwater-fish",
     name: "Freshwater fishes",
     shortName: "Fish",
@@ -62,6 +71,7 @@ export const wildlifeGroups: WildlifeGroup[] = [
       "Native and introduced species of the open water and the river mouths that feed the lake. Several are the basis of the lakeside catch that supplies Naujan's markets.",
   },
   {
+    id: "c1000000-0000-4000-8000-000000000003",
     slug: "amphibians-reptiles",
     name: "Amphibians & reptiles",
     shortName: "Reptiles",
@@ -69,6 +79,7 @@ export const wildlifeGroups: WildlifeGroup[] = [
       "Frogs, skinks and water snakes of the marsh edge — most active after rain, and almost all of them heard rather than seen.",
   },
   {
+    id: "c1000000-0000-4000-8000-000000000004",
     slug: "mammals",
     name: "Mammals",
     shortName: "Mammals",
@@ -76,6 +87,7 @@ export const wildlifeGroups: WildlifeGroup[] = [
       "Bats and small mammals of the shoreline forest. The lake edge is a commuting corridor for fruit bats roosting in the remaining lowland trees.",
   },
   {
+    id: "c1000000-0000-4000-8000-000000000005",
     slug: "wetland-flora",
     name: "Wetland flora",
     shortName: "Flora",
@@ -84,7 +96,7 @@ export const wildlifeGroups: WildlifeGroup[] = [
   },
 ];
 
-export const species: Species[] = [
+const seedSpecies: Species[] = [
   // ── Waterbirds ────────────────────────────────────────────────────────────
   {
     slug: "philippine-duck",
@@ -305,14 +317,131 @@ export const species: Species[] = [
   },
 ];
 
-/** Species grouped in `wildlifeGroups` order, ready for section rendering. */
-export function speciesByGroup(): { group: WildlifeGroup; species: Species[] }[] {
-  return wildlifeGroups.map((group) => ({
+/** Short labels the catalogue uses in its jump bar; the schema has no column for them. */
+const GROUP_SHORT_NAMES: Record<string, string> = {
+  waterbirds: "Waterbirds",
+  "freshwater-fish": "Fish",
+  "amphibians-reptiles": "Reptiles",
+  mammals: "Mammals",
+  "wetland-flora": "Flora",
+};
+
+function shortNameFor(slug: string, name: string): string {
+  return GROUP_SHORT_NAMES[slug] ?? name.split(" ")[0] ?? name;
+}
+
+function toGroup(row: Tables<"categories">): WildlifeGroup {
+  return {
+    id: row.id,
+    slug: row.slug,
+    name: row.name,
+    shortName: shortNameFor(row.slug, row.name),
+    description: row.description ?? "",
+  };
+}
+
+function toSpecies(
+  row: Tables<"species">,
+  groupSlugById: Map<string, string>,
+): Species {
+  return {
+    slug: row.slug,
+    group: groupSlugById.get(row.category_id) ?? seedWildlifeGroups[0].slug,
+    commonName: row.common_name,
+    localName: row.local_name ?? undefined,
+    scientificName: row.scientific_name,
+    status: row.conservation_status,
+    seasonality: row.seasonality,
+    habitat: row.habitat,
+    description: row.description,
+  };
+}
+
+/** Taxonomy groups, ordered for display. */
+export async function getWildlifeGroups(): Promise<WildlifeGroup[]> {
+  "use cache";
+  cacheLife("hours");
+  cacheTag("categories");
+
+  const client = getSupabaseClient();
+  if (!client) return seedWildlifeGroups;
+
+  return fetchOrFallback(
+    "categories",
+    async () => {
+      const { data, error } = await client
+        .from("categories")
+        .select("*")
+        .order("sort_order", { ascending: true });
+
+      if (error) throw queryError("categories", error.message);
+      return data && data.length > 0 ? data.map(toGroup) : seedWildlifeGroups;
+    },
+    () => seedWildlifeGroups,
+  );
+}
+
+/** Every catalogued species, across all groups. */
+export async function getSpecies(): Promise<Species[]> {
+  "use cache";
+  cacheLife("hours");
+  cacheTag("species");
+
+  const client = getSupabaseClient();
+  if (!client) return seedSpecies;
+
+  return fetchOrFallback(
+    "species",
+    async () => {
+      const groups = await getWildlifeGroups();
+      const groupSlugById = new Map(
+        groups.map((group) => [group.id, group.slug]),
+      );
+
+      const { data, error } = await client
+        .from("species")
+        .select("*")
+        .order("common_name", { ascending: true });
+
+      if (error) throw queryError("species", error.message);
+      return data && data.length > 0
+        ? data.map((row) => toSpecies(row, groupSlugById))
+        : seedSpecies;
+    },
+    () => seedSpecies,
+  );
+}
+
+/** Species grouped in taxonomy order, ready for section rendering. */
+export function groupSpecies(
+  groups: WildlifeGroup[],
+  entries: Species[],
+): { group: WildlifeGroup; species: Species[] }[] {
+  return groups.map((group) => ({
     group,
-    species: species.filter((entry) => entry.group === group.slug),
+    species: entries.filter((entry) => entry.group === group.slug),
   }));
 }
 
-export function speciesCountByStatus(status: ConservationStatus): number {
-  return species.filter((entry) => entry.status === status).length;
+/** Species grouped in taxonomy order, read from the database when configured. */
+export async function getSpeciesByGroup(): Promise<
+  { group: WildlifeGroup; species: Species[] }[]
+> {
+  "use cache";
+  cacheLife("hours");
+  cacheTag("species", "categories");
+
+  const [groups, entries] = await Promise.all([
+    getWildlifeGroups(),
+    getSpecies(),
+  ]);
+
+  return groupSpecies(groups, entries);
+}
+
+export function speciesCountByStatus(
+  entries: Species[],
+  status: ConservationStatus,
+): number {
+  return entries.filter((entry) => entry.status === status).length;
 }

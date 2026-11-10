@@ -9,3 +9,44 @@ Course and Section: BSIT-3F3
 Project Description: The proposed system can generate income through eco-tourism packages, promotional listings for local tourism businesses, membership subscriptions, and partnerships with tour guides and local establishments. The platform may also provide paid promotional features for accredited resorts, restaurants, tour operators, and other tourism-related businesses. These revenue sources can help support the maintenance, hosting, content management, and future development of the system while promoting Naujan Lake as an eco-tourism destination.
 
 Technologies Used: Next.js TypeScript
+
+---
+
+## Running the project
+
+```bash
+npm install
+npm run dev      # http://localhost:3000
+npm run build    # production build
+npm run lint     # eslint
+```
+
+## Data layer
+
+The public catalogue reads from Supabase when a project is configured, and
+falls back to the seed rows in `lib/` when it is not. Nothing breaks without a
+database: that is demo mode.
+
+1. Create a Supabase project and run [`supabase/schema.sql`](./supabase/schema.sql)
+   in the SQL editor. It creates the seven tables, the RLS policies and the demo
+   seed rows.
+2. Copy `.env.example` to `.env.local` and fill in the two values from
+   Supabase → Project Settings → API.
+3. Restart `npm run dev`.
+
+| Module | Supabase table | Fallback |
+| :--- | :--- | :--- |
+| `lib/species.ts` | `categories`, `species` | seed catalogue in the same file |
+| `lib/tours.ts` | `tours` (active rows only) | seed packages in the same file |
+| `lib/advisories.ts` | `advisories` (published rows only) | seed notices in the same file |
+| `lib/guidelines.ts` | — | static copy (no table yet) |
+| `lib/inquiries.ts` | `tour_inquiries` (planned, needs auth) | `localStorage` demo store |
+| `lib/subscribers.ts` | `subscribers` (planned, needs auth) | `localStorage` demo store |
+
+Reads are memoised with Next.js `use cache` (`cacheLife("hours")`) and tagged
+`species`, `categories`, `tours` and `advisories`, so the admin CRUD can
+invalidate them with `revalidateTag` once it lands.
+
+Inquiry and subscriber records stay in the browser until Supabase Auth is
+wired up (Milestone 4 of issue #1): the staff-facing reads are protected by
+`is_admin()`, so moving them now would show an empty admin panel.

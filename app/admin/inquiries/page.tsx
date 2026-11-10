@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Inbox } from "lucide-react";
 import StatCard from "@/components/admin/stat-card";
 import {
@@ -10,7 +10,12 @@ import {
   type InquiryStatus,
 } from "@/lib/inquiries";
 
-const STATUSES: InquiryStatus[] = ["PENDING", "CONFIRMED", "DECLINED"];
+const STATUSES: InquiryStatus[] = [
+  "PENDING",
+  "CONTACTED",
+  "CONFIRMED",
+  "DECLINED",
+];
 
 const statusMeta: Record<
   InquiryStatus,
@@ -20,6 +25,11 @@ const statusMeta: Record<
     label: "Pending",
     bar: "bg-reed-400",
     chip: "bg-reed-50 text-reed-800 ring-reed-600/25",
+  },
+  CONTACTED: {
+    label: "Contacted",
+    bar: "bg-lake-400",
+    chip: "bg-lake-50 text-lake-700 ring-lake-600/25",
   },
   CONFIRMED: {
     label: "Confirmed",
@@ -45,11 +55,34 @@ function formatDay(iso: string) {
 }
 
 export default function AdminInquiriesPage() {
-  const [inquiries, setInquiries] = useState<Inquiry[]>(() => getAllInquiries());
+  const [inquiries, setInquiries] = useState<Inquiry[]>([]);
+  const [pendingId, setPendingId] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+
+    getAllInquiries().then((list) => {
+      if (active) setInquiries(list);
+    });
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  async function changeStatus(id: string, status: InquiryStatus) {
+    setPendingId(id);
+    try {
+      setInquiries(await setInquiryStatus(id, status));
+    } finally {
+      setPendingId(null);
+    }
+  }
 
   const stats = useMemo(() => {
     const counts: Record<InquiryStatus, number> = {
       PENDING: 0,
+      CONTACTED: 0,
       CONFIRMED: 0,
       DECLINED: 0,
     };
@@ -263,16 +296,15 @@ export default function AdminInquiriesPage() {
                   <td className="px-5 py-3.5">
                     <select
                       value={inquiry.status}
-                      onChange={(event) =>
-                        setInquiries(
-                          setInquiryStatus(
-                            inquiry.id,
-                            event.target.value as InquiryStatus,
-                          ),
-                        )
-                      }
+                      onChange={(event) => {
+                        void changeStatus(
+                          inquiry.id,
+                          event.target.value as InquiryStatus,
+                        );
+                      }}
+                      disabled={pendingId === inquiry.id}
                       aria-label={`Status for ${inquiry.reference}`}
-                      className={`cursor-pointer rounded-full border-0 px-2.5 py-1 text-[10.5px] font-semibold tracking-[0.1em] uppercase ring-1 ring-inset outline-none ${statusMeta[inquiry.status].chip}`}
+                      className={`cursor-pointer rounded-full border-0 px-2.5 py-1 text-[10.5px] font-semibold tracking-[0.1em] uppercase ring-1 ring-inset outline-none disabled:cursor-wait disabled:opacity-60 ${statusMeta[inquiry.status].chip}`}
                     >
                       {STATUSES.map((status) => (
                         <option key={status} value={status}>

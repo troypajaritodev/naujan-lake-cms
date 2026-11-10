@@ -160,12 +160,12 @@ export const overviewFacts = [
 
 /**
  * Advisories live in their own module now that they have a list page and a
- * detail route. Re-exported here so existing imports keep working.
+ * detail route. Only the types are re-exported here; read data through
+ * `lib/advisories.ts` so it can come from Supabase.
  */
 export type {
   Advisory,
   AdvisoryPreview,
   AdvisorySeverity,
 } from "@/lib/advisories";
-export { latestAdvisories } from "@/lib/advisories";
 

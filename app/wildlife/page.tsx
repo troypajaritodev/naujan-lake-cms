@@ -14,11 +14,11 @@ import {
 import SectionHeading from "@/components/section-heading";
 import {
   conservationLabels,
+  getSpecies,
+  getWildlifeGroups,
+  groupSpecies,
   seasonalityLabels,
-  species,
-  speciesByGroup,
   speciesCountByStatus,
-  wildlifeGroups,
   type ConservationStatus,
 } from "@/lib/species";
 
@@ -46,17 +46,24 @@ const statusStyles: Record<ConservationStatus, string> = {
   DD: "bg-sand-100 text-sand-800 ring-sand-500/30",
 };
 
-const threatened = speciesCountByStatus("EN") + speciesCountByStatus("VU") + speciesCountByStatus("CR");
+export default async function WildlifePage() {
+  const [groups, entries] = await Promise.all([
+    getWildlifeGroups(),
+    getSpecies(),
+  ]);
+  const grouped = groupSpecies(groups, entries);
 
-const facts = [
-  { value: String(wildlifeGroups.length), label: "taxonomic groups" },
-  { value: String(species.length), label: "species on record" },
-  { value: String(threatened), label: "globally threatened" },
-  { value: "Oct–Mar", label: "peak birding season" },
-];
+  const threatened =
+    speciesCountByStatus(entries, "EN") +
+    speciesCountByStatus(entries, "VU") +
+    speciesCountByStatus(entries, "CR");
 
-export default function WildlifePage() {
-  const grouped = speciesByGroup();
+  const facts = [
+    { value: String(groups.length), label: "taxonomic groups" },
+    { value: String(entries.length), label: "species on record" },
+    { value: String(threatened), label: "globally threatened" },
+    { value: "Oct–Mar", label: "peak birding season" },
+  ];
 
   return (
     <>

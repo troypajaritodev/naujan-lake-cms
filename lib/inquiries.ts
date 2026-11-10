@@ -1,9 +1,19 @@
 /**
  * Tour inquiries submitted from the visitor portal (Requirement B — customer
- * transactions). Stored in `localStorage` until the CMS/Supabase table exists.
+ * transactions).
+ *
+ * The production table is `tour_inquiries` in `supabase/schema.sql`, but the
+ * staff-facing reads are gated by `is_admin()`. Switching this module to
+ * Supabase before Supabase Auth lands (Milestone 4) would show an empty admin
+ * queue, so the demo store below stays authoritative for now. The API is
+ * already asynchronous so that swap needs no callsite changes.
  */
 
-export type InquiryStatus = "PENDING" | "CONFIRMED" | "DECLINED";
+export type InquiryStatus =
+  | "PENDING"
+  | "CONTACTED"
+  | "CONFIRMED"
+  | "DECLINED";
 
 export type Inquiry = {
   id: string;
@@ -94,7 +104,7 @@ function canUseStorage() {
   return typeof window !== "undefined" && "localStorage" in window;
 }
 
-export function getInquiries(): Inquiry[] {
+function readInquiries(): Inquiry[] {
   if (!canUseStorage()) return [];
 
   try {
@@ -110,29 +120,31 @@ export function getInquiries(): Inquiry[] {
   }
 }
 
-/** Every inquiry, newest first — used by the admin dashboard. */
-export function getAllInquiries(): Inquiry[] {
-  return getInquiries().sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+function writeInquiries(inquiries: Inquiry[]) {
+  if (!canUseStorage()) return;
+  window.localStorage.setItem(INQUIRIES_KEY, JSON.stringify(inquiries));
 }
 
-export function setInquiryStatus(
+/** Every inquiry, newest first — used by the admin dashboard. */
+export async function getAllInquiries(): Promise<Inquiry[]> {
+  return readInquiries().sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+}
+
+export async function setInquiryStatus(
   id: string,
   status: InquiryStatus,
-): Inquiry[] {
-  const next = getInquiries().map((inquiry) =>
+): Promise<Inquiry[]> {
+  const next = readInquiries().map((inquiry) =>
     inquiry.id === id ? { ...inquiry, status } : inquiry,
   );
 
-  if (canUseStorage()) {
-    window.localStorage.setItem(INQUIRIES_KEY, JSON.stringify(next));
-  }
-
+  writeInquiries(next);
   return next.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
 
-export function getInquiriesFor(email: string): Inquiry[] {
+export async function getInquiriesFor(email: string): Promise<Inquiry[]> {
   const normalized = email.trim().toLowerCase();
-  return getInquiries()
+  return readInquiries()
     .filter((inquiry) => inquiry.userEmail === normalized)
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
@@ -142,7 +154,7 @@ export type InquiryInput = Omit<
   "id" | "reference" | "status" | "createdAt"
 >;
 
-export function createInquiry(input: InquiryInput): Inquiry {
+export async function createInquiry(input: InquiryInput): Promise<Inquiry> {
   const now = new Date();
   const inquiry: Inquiry = {
     ...input,
@@ -152,12 +164,7 @@ export function createInquiry(input: InquiryInput): Inquiry {
     createdAt: now.toISOString(),
   };
 
-  if (canUseStorage()) {
-    window.localStorage.setItem(
-      INQUIRIES_KEY,
-      JSON.stringify([inquiry, ...getInquiries()]),
-    );
-  }
+  writeInquiries([inquiry, ...readInquiries()]);
 
   return inquiry;
 }
