@@ -9,6 +9,8 @@
  * already asynchronous so that swap needs no callsite changes.
  */
 
+import { cleanEmail, cleanPhone, cleanText } from "@/lib/sanitize";
+
 export type InquiryStatus =
   | "PENDING"
   | "CONTACTED"
@@ -158,6 +160,15 @@ export async function createInquiry(input: InquiryInput): Promise<Inquiry> {
   const now = new Date();
   const inquiry: Inquiry = {
     ...input,
+    fullName: cleanText(input.fullName, 120),
+    email: cleanEmail(input.email),
+    userEmail: cleanEmail(input.userEmail),
+    phone: cleanPhone(input.phone),
+    tourSlug: cleanText(input.tourSlug, 120),
+    tourTitle: cleanText(input.tourTitle, 160),
+    preferredDate: cleanText(input.preferredDate, 10),
+    partySize: Math.min(50, Math.max(1, Math.trunc(input.partySize) || 1)),
+    message: cleanText(input.message, 2000),
     id: `inq_${crypto.randomUUID().slice(0, 8)}`,
     reference: `NL-${now.getFullYear()}-${String(now.getTime()).slice(-6)}`,
     status: "PENDING",

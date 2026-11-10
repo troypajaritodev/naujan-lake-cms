@@ -7,6 +7,8 @@
  * admin panel. The API is asynchronous so that swap needs no callsite changes.
  */
 
+import { cleanEmail } from "@/lib/sanitize";
+
 export type SubscriberStatus = "ACTIVE" | "UNSUBSCRIBED";
 
 export type SubscriberTopic = "advisories" | "tours" | "events";
@@ -67,7 +69,7 @@ export async function listSubscribers(): Promise<Subscriber[]> {
 }
 
 export async function isSubscribed(email: string): Promise<boolean> {
-  const normalized = email.trim().toLowerCase();
+  const normalized = cleanEmail(email);
   return readSubscribers().some(
     (entry) => entry.email === normalized && entry.status === "ACTIVE",
   );
@@ -83,7 +85,7 @@ export async function subscribe(
   email: string,
   topics: SubscriberTopic[],
 ): Promise<{ subscriber: Subscriber; outcome: SubscribeOutcome }> {
-  const normalized = email.trim().toLowerCase();
+  const normalized = cleanEmail(email);
 
   if (!EMAIL_PATTERN.test(normalized)) {
     throw new SubscribeError("Enter a valid email address.", "email");
@@ -131,7 +133,7 @@ export async function subscribe(
 }
 
 export async function unsubscribe(email: string): Promise<boolean> {
-  const normalized = email.trim().toLowerCase();
+  const normalized = cleanEmail(email);
   const subscribers = readSubscribers();
   const index = subscribers.findIndex((entry) => entry.email === normalized);
 
