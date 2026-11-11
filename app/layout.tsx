@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Fraunces, Geist, Geist_Mono } from "next/font/google";
 import { AuthProvider } from "@/components/auth-provider";
 import SiteChrome from "@/components/site-chrome";
+import { getBannerAdvisory } from "@/lib/advisories";
 import { site } from "@/lib/site";
 import "./globals.css";
 
@@ -74,7 +75,9 @@ export const viewport: Viewport = {
   colorScheme: "light",
 };
 
-export default function RootLayout({ children }: LayoutProps<"/">) {
+export default async function RootLayout({ children }: LayoutProps<"/">) {
+  const banner = await getBannerAdvisory();
+
   return (
     <html
       lang="en"
@@ -88,7 +91,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
           Skip to content
         </a>
         <AuthProvider>
-          <SiteChrome>{children}</SiteChrome>
+          <SiteChrome banner={banner}>{children}</SiteChrome>
         </AuthProvider>
       </body>
     </html>
