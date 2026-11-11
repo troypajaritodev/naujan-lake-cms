@@ -24,8 +24,10 @@ npm run lint     # eslint
 ## Status
 
 Phase 1 (public portal) and Phase 2 (admin shell) are implemented. Phase 3 is in
-progress: the Supabase read layer has shipped and admin CRUD is next. The
-per-use-case status table lives in
+progress: the Supabase read layer, the site-wide advisory banner, species
+records with search and filters, related tours, inquiry emails, baseline
+security and a WCAG notes pass have shipped; admin CRUD, Supabase Auth and the
+RLS verification are next. The per-use-case status table lives in
 [`docs/PRD.md` §12.4](./docs/PRD.md#124-implementation-status).
 
 No database or `.env.local` is required to run the site — see *Data layer* below.
@@ -55,6 +57,25 @@ database: that is demo mode.
 Reads are memoised with Next.js `use cache` (`cacheLife("hours")`) and tagged
 `species`, `categories`, `tours` and `advisories`, so the admin CRUD can
 invalidate them with `revalidateTag` once it lands.
+
+## Email
+
+Inquiry confirmations and staff alerts (FR-2.3) go through one transport in
+`lib/email.ts`:
+
+- With `RESEND_API_KEY` and `EMAIL_FROM` set, messages are sent through
+  [Resend](https://resend.com) (plain text, 8 s timeout, never throws into the
+  request that triggered them).
+- Without them the full message is printed to the server console, so the flow
+  can be exercised offline. `PARK_NOTIFICATION_EMAIL` chooses the staff inbox
+  and `NEXT_PUBLIC_SITE_URL` the links inside the messages — see
+  `.env.example`.
+
+## Accessibility
+
+`docs/accessibility.md` records the WCAG 2.1 AA pass: what is in place, the
+computed contrast ratios for the design tokens and the follow-ups (automated
+Lighthouse/axe run, admin table captions).
 
 Inquiry and subscriber records stay in the browser until Supabase Auth is
 wired up (Milestone 4 of issue #1): the staff-facing reads are protected by
