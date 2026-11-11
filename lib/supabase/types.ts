@@ -65,6 +65,7 @@ type TourRow = {
   inclusions: string[];
   what_to_bring: string[];
   notes: string[];
+  species_slugs: string[];
   itinerary: Json;
   tariff: Json;
   featured_image: string;

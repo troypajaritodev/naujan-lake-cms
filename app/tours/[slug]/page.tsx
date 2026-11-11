@@ -14,11 +14,13 @@ import {
 } from "lucide-react";
 import {
   difficultyLabel,
+  getRelatedTours,
   getTour,
   getTours,
   tariffTotal,
   type TourDifficulty,
 } from "@/lib/tours";
+import { getSpecies } from "@/lib/species";
 
 type TourPageProps = {
   params: Promise<{ slug: string }>;
@@ -68,10 +70,12 @@ export default async function TourDetailPage({ params }: TourPageProps) {
   if (!tour) notFound();
 
   const total = tariffTotal(tour);
-  const allTours = await getTours();
-  const others = allTours
-    .filter((entry) => entry.slug !== tour.slug)
-    .slice(0, 3);
+  const others = await getRelatedTours(tour.slug, 3);
+
+  const allSpecies = tour.speciesSlugs.length > 0 ? await getSpecies() : [];
+  const tourSpecies = allSpecies.filter((species) =>
+    tour.speciesSlugs.includes(species.slug),
+  );
 
   return (
     <>
@@ -246,6 +250,29 @@ export default async function TourDetailPage({ params }: TourPageProps) {
                     {tour.departure}
                   </p>
                 </div>
+
+                {tourSpecies.length > 0 ? (
+                  <div className="mt-6 border-t border-ink/8 pt-5">
+                    <h2 className="text-[10px] font-semibold tracking-[0.18em] text-sand-600 uppercase">
+                      Wildlife on this route
+                    </h2>
+                    <ul className="mt-3 flex flex-wrap gap-2">
+                      {tourSpecies.map((species) => (
+                        <li key={species.slug}>
+                          <Link
+                            href={`/wildlife/${species.slug}`}
+                            className="inline-flex items-center gap-1.5 rounded-full bg-sand-100 px-3 py-1.5 text-[12px] font-medium text-ink transition-colors hover:bg-sand-200"
+                          >
+                            {species.commonName}
+                            <span className="font-mono text-[10px] text-sand-600">
+                              {species.status}
+                            </span>
+                          </Link>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
 
                 <Link
                   href={`/inquire?tour=${tour.slug}`}
