@@ -517,7 +517,15 @@ evidence base for the volume assumptions in the revenue model (§6).
 | Register account | `/register` | Implemented |
 | Sign in | `/login` | Implemented |
 | Submit booking inquiry | `/inquire`, `lib/inquiries.ts` | Implemented |
+| Receive inquiry emails | `app/api/inquiries/notify`, `lib/email.ts` | Implemented (demo transport; set `RESEND_API_KEY` for live sending) |
 | Manage profile | `/account` | Implemented |
+| Search & filter the catalogue | `/wildlife?category=&status=&season=&q=` | Implemented |
+| Species record pages | `/wildlife/[slug]` | Implemented |
+| Related tours & species links (FR-1.3) | `tours.species_slugs`, `lib/tours.ts` | Implemented |
+| Site-wide advisory banner (FR-4.2) | `components/site-banner.tsx`, `lib/advisories.ts` | Implemented |
+| Newsletter digest sender (FR-6.3) | `lib/notifications.ts` | Transport ready; audience needs Supabase Auth |
+| Security headers & input cleaning | `next.config.ts`, `lib/sanitize.ts` | Implemented |
+| WCAG 2.1 AA notes | `docs/accessibility.md` | Static pass done; automated audit pending |
 | Manage users & roles | `/admin/users` | List and counters implemented; editing planned |
 | Triage inquiries | `/admin/inquiries` | Implemented |
 | View reports | `/admin/inquiries` | Implemented |
