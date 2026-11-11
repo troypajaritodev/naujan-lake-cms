@@ -235,6 +235,11 @@ export default function SiteHeader() {
               <Link
                 key={item.href}
                 href={item.href}
+                aria-current={
+                  (item.href === "/" ? pathname === "/" : pathname.startsWith(item.href))
+                    ? "page"
+                    : undefined
+                }
                 tabIndex={menuOpen ? 0 : -1}
                 onClick={() => setMenuOpen(false)}
                 className="group flex items-baseline gap-4 border-b border-white/10 py-5"
@@ -253,6 +258,7 @@ export default function SiteHeader() {
                 <ArrowUpRight
                   className="size-4 shrink-0 text-sand-300 transition-transform duration-300 group-hover:-translate-y-0.5 group-hover:translate-x-0.5"
                   strokeWidth={1.8}
+                  aria-hidden="true"
                 />
               </Link>
             ))}
