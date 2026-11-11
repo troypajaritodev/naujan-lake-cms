@@ -7,7 +7,14 @@
  * Supabase before Supabase Auth lands (Milestone 4) would show an empty admin
  * queue, so the demo store below stays authoritative for now. The API is
  * already asynchronous so that swap needs no callsite changes.
+ *
+ * The admin chrome reads this store live (`useInquiries`, `useInquiryAlerts`)
+ * so a new booking lights up the pending badge without a reload. The snapshot
+ * helpers exist for `useSyncExternalStore` and are intentionally exported from
+ * here so `lib/inquiry-alerts.ts` can compose them.
  */
+
+import { useSyncExternalStore } from "react";
 
 import { cleanEmail, cleanPhone, cleanText } from "@/lib/sanitize";
 
@@ -127,6 +134,70 @@ function writeInquiries(inquiries: Inquiry[]) {
   window.localStorage.setItem(INQUIRIES_KEY, JSON.stringify(inquiries));
 }
 
+const EMPTY: Inquiry[] = [];
+const listeners = new Set<() => void>();
+
+function emit() {
+  for (const listener of listeners) listener();
+}
+
+/** Subscribe to inquiry changes (new submission or a status edit). */
+export function subscribeInquiries(listener: () => void): () => void {
+  listeners.add(listener);
+  return () => listeners.delete(listener);
+}
+
+function sortRaw(raw: string | null): Inquiry[] {
+  if (!raw) return EMPTY;
+
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return EMPTY;
+    return (parsed as Inquiry[]).sort((a, b) =>
+      b.createdAt.localeCompare(a.createdAt),
+    );
+  } catch {
+    return EMPTY;
+  }
+}
+
+let snapshotRaw: string | null = null;
+let snapshotValue: Inquiry[] = EMPTY;
+
+/**
+ * Cached snapshot for `useSyncExternalStore` — the same array reference is
+ * returned until the stored inquiries actually change.
+ */
+export function getInquiriesSnapshot(): Inquiry[] {
+  if (!canUseStorage()) return EMPTY;
+
+  let raw = window.localStorage.getItem(INQUIRIES_KEY);
+  if (raw === null) {
+    writeInquiries([...SEED_INQUIRIES]); // seeds the demo rows on first run
+    raw = JSON.stringify(SEED_INQUIRIES);
+  }
+
+  if (raw !== snapshotRaw) {
+    snapshotRaw = raw;
+    snapshotValue = sortRaw(raw);
+  }
+
+  return snapshotValue;
+}
+
+export function getServerInquiriesSnapshot(): Inquiry[] {
+  return EMPTY;
+}
+
+/** Live, newest-first inquiry list for client components. */
+export function useInquiries(): Inquiry[] {
+  return useSyncExternalStore(
+    subscribeInquiries,
+    getInquiriesSnapshot,
+    getServerInquiriesSnapshot,
+  );
+}
+
 /** Every inquiry, newest first — used by the admin dashboard. */
 export async function getAllInquiries(): Promise<Inquiry[]> {
   return readInquiries().sort((a, b) => b.createdAt.localeCompare(a.createdAt));
@@ -141,6 +212,8 @@ export async function setInquiryStatus(
   );
 
   writeInquiries(next);
+  emit();
+
   return next.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
 
@@ -177,5 +250,6 @@ export async function createInquiry(input: InquiryInput): Promise<Inquiry> {
 
   writeInquiries([inquiry, ...readInquiries()]);
 
+  emit();
   return inquiry;
 }
