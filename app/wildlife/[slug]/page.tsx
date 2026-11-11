@@ -18,6 +18,13 @@ import {
   seasonalityLabels,
   type ConservationStatus,
 } from "@/lib/species";
+import { getToursForSpecies } from "@/lib/tours";
+
+const peso = new Intl.NumberFormat("en-PH", {
+  style: "currency",
+  currency: "PHP",
+  maximumFractionDigits: 0,
+});
 
 type SpeciesPageProps = {
   params: Promise<{ slug: string }>;
@@ -87,6 +94,7 @@ export default async function SpeciesPage({ params }: SpeciesPageProps) {
     getWildlifeGroups(),
     getRelatedSpecies(entry.slug, 4),
   ]);
+  const tours = await getToursForSpecies(entry.slug, 3);
   const group = groups.find((candidate) => candidate.slug === entry.group);
 
   const facts = [
@@ -251,6 +259,73 @@ export default async function SpeciesPage({ params }: SpeciesPageProps) {
                     </p>
                     <span className="mt-auto pt-4 text-[11.5px] font-semibold text-lake-800">
                       View record →
+                    </span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </section>
+      ) : null}
+
+      {tours.length > 0 ? (
+        <section className="border-t border-ink/8 bg-sand-50 pb-16 lg:pb-20">
+          <div className="mx-auto w-full max-w-7xl px-5 sm:px-8 lg:px-12">
+            <div className="flex flex-wrap items-end justify-between gap-4">
+              <div>
+                <h2 className="font-display text-[24px] leading-tight text-ink">
+                  See it from a boat
+                </h2>
+                <p className="mt-1.5 max-w-xl text-[13.5px] leading-relaxed text-ink-soft/80">
+                  Accredited packages that put this species on the itinerary.
+                </p>
+              </div>
+              <Link
+                href="/tours"
+                className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-lake-800 transition-colors hover:text-lake-950"
+              >
+                All eco-tours
+                <ArrowRight className="size-3.5" strokeWidth={2} aria-hidden="true" />
+              </Link>
+            </div>
+
+            <ul className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+              {tours.map((tour) => (
+                <li key={tour.slug}>
+                  <Link
+                    href={`/tours/${tour.slug}`}
+                    className="group flex h-full flex-col rounded-2xl bg-white p-5 ring-1 ring-ink/8 transition-shadow duration-300 hover:ring-ink/16"
+                  >
+                    <span className="text-[10px] font-semibold tracking-[0.16em] text-sand-600 uppercase">
+                      {tour.category}
+                    </span>
+                    <h3 className="mt-1.5 text-[15.5px] leading-snug font-medium text-ink">
+                      {tour.title}
+                    </h3>
+                    <p className="mt-2 line-clamp-3 text-[12.5px] leading-relaxed text-ink-soft/80">
+                      {tour.summary}
+                    </p>
+                    <dl className="mt-auto grid grid-cols-2 gap-2 border-t border-ink/8 pt-4 text-[11.5px] text-sand-700">
+                      <div>
+                        <dt className="text-[9.5px] font-semibold tracking-[0.1em] text-sand-600 uppercase">
+                          Duration
+                        </dt>
+                        <dd>{tour.duration}</dd>
+                      </div>
+                      <div>
+                        <dt className="text-[9.5px] font-semibold tracking-[0.1em] text-sand-600 uppercase">
+                          From
+                        </dt>
+                        <dd>{peso.format(tour.ratePerPerson)} / person</dd>
+                      </div>
+                    </dl>
+                    <span className="mt-3 inline-flex items-center gap-1 text-[11.5px] font-semibold text-lake-800">
+                      View package
+                      <ArrowUpRight
+                        className="size-3.5 transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5"
+                        strokeWidth={2}
+                        aria-hidden="true"
+                      />
                     </span>
                   </Link>
                 </li>

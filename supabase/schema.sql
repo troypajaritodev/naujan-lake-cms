@@ -96,6 +96,7 @@ create table if not exists public.tours (
   inclusions      text[] not null default '{}',
   what_to_bring   text[] not null default '{}',
   notes           text[] not null default '{}',
+  species_slugs   text[] not null default '{}',
   itinerary       jsonb not null default '[]'::jsonb,
   tariff          jsonb not null default '[]'::jsonb,
   featured_image  text not null,
@@ -106,6 +107,12 @@ create table if not exists public.tours (
 
 comment on column public.tours.itinerary is 'Ordered stops: [{"time":"05:30","title":"…","detail":"…"}].';
 comment on column public.tours.tariff    is 'Price lines: [{"label":"Boat rental","amount":700}]. Sum equals rate_per_person.';
+comment on column public.tours.species_slugs is 'FR-1.3: species slugs (public.species.slug) this package is built around.';
+
+-- Projects created before FR-1.3 need the new column added in place; the
+-- create table above only covers a fresh database.
+alter table public.tours
+  add column if not exists species_slugs text[] not null default '{}';
 
 -- 2.5 tour_inquiries — booking requests (FR-2.3)
 create table if not exists public.tour_inquiries (
@@ -158,6 +165,7 @@ create index if not exists species_category_idx        on public.species (catego
 create index if not exists species_status_idx          on public.species (conservation_status);
 create index if not exists species_seasonality_idx     on public.species (seasonality);
 create index if not exists tours_active_idx            on public.tours (is_active, title);
+create index if not exists tours_species_slugs_idx     on public.tours using gin (species_slugs);
 create index if not exists inquiries_tour_idx          on public.tour_inquiries (tour_id);
 create index if not exists inquiries_user_idx          on public.tour_inquiries (user_id);
 create index if not exists inquiries_status_idx        on public.tour_inquiries (status);
@@ -318,7 +326,7 @@ on conflict (slug) do nothing;
 
 insert into public.tours
   (id, title, slug, category, summary, duration, departure, rate_per_person, max_capacity,
-   difficulty, inclusions, what_to_bring, notes, itinerary, tariff, featured_image)
+   difficulty, inclusions, what_to_bring, notes, species_slugs, itinerary, tariff, featured_image)
 values
   ('t1000000-0000-4000-8000-000000000001', 'Guided birdwatching expedition', 'guided-birdwatching-expedition',
    'Birdwatching',
@@ -329,6 +337,7 @@ values
    array['Best between October and March, when migratory species are present.'],
    '[{"time":"05:30","title":"Briefing at the jetty","detail":"Life jackets fitted and nesting-season rules."}]'::jsonb,
    '[{"label":"Boat rental and operator","amount":700},{"label":"Licensed birding guide","amount":600},{"label":"Environmental fee","amount":300},{"label":"Binocular hire","amount":250}]'::jsonb,
+   array['philippine-duck', 'little-egret', 'purple-heron', 'wandering-whistling-duck', 'great-egret'],
    '/images/ducklings.jpg'),
   ('t1000000-0000-4000-8000-000000000002', 'Sunrise boat tour', 'sunrise-boat-tour',
    'Scenic',
@@ -339,6 +348,7 @@ values
    array['Departs strictly at 05:00 — late arrivals cannot be waited for.'],
    '[{"time":"05:00","title":"Departure","detail":"Board at the park jetty while the water is still flat."}]'::jsonb,
    '[{"label":"Boat rental and operator","amount":700},{"label":"Fuel and crew","amount":200},{"label":"Environmental fee","amount":300}]'::jsonb,
+   array['blue-water-lily', 'common-reed'],
    '/images/hero-lake.jpg'),
   ('t1000000-0000-4000-8000-000000000003', 'Lakeside community homestay', 'lakeside-community-homestay',
    'Cultural',
@@ -349,6 +359,7 @@ values
    array['Accommodation is basic — shared bathroom, fan-cooled room.'],
    '[{"time":"Day 1 · 14:00","title":"Arrival and orientation","detail":"Meet the host family and the barangay guide."}]'::jsonb,
    '[{"label":"Homestay (per night)","amount":900},{"label":"Meals (4)","amount":700},{"label":"Village guide","amount":500},{"label":"Environmental fee","amount":300}]'::jsonb,
+   array['milkfish', 'mudfish', 'nile-tilapia'],
    '/images/shoreline.jpg'),
   ('t1000000-0000-4000-8000-000000000004', 'Educational research trek', 'educational-research-trek',
    'Research',
@@ -359,8 +370,12 @@ values
    array['Group bookings only, minimum of 8 participants.'],
    '[{"time":"06:00","title":"Safety briefing and method overview","detail":"Survey ethics, permits and data use."}]'::jsonb,
    '[{"label":"Boat transfer","amount":500},{"label":"Research guide","amount":700},{"label":"Environmental fee","amount":300}]'::jsonb,
+   array['flathead-goby', 'common-green-frog', 'water-monitor', 'common-sunken-eyed-skink',
+         'large-flying-fox', 'common-fruit-bat', 'water-hyacinth', 'freshwater-mangrove'],
    '/images/lake-canopy.jpg')
-on conflict (slug) do nothing;
+on conflict (slug) do update
+  set species_slugs = excluded.species_slugs
+  where public.tours.species_slugs = '{}';
 
 insert into public.advisories (id, author_id, title, slug, severity, excerpt, content, published_at)
 values

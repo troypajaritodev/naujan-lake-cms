@@ -41,6 +41,11 @@ export type Tour = {
   tariff: TariffLine[];
   bring: string[];
   notes: string[];
+  /**
+   * Species slugs the package is built around (FR-1.3). Read from
+   * `tours.species_slugs` when Supabase is configured.
+   */
+  speciesSlugs: string[];
 };
 
 export const difficultyLabel: Record<TourDifficulty, string> = {
@@ -106,6 +111,13 @@ const seedTours: Tour[] = [
       "Best between October and March, when migratory species are present.",
       "Not recommended for children under 7 — the boat sits low and quiet.",
     ],
+    speciesSlugs: [
+      "philippine-duck",
+      "little-egret",
+      "purple-heron",
+      "wandering-whistling-duck",
+      "great-egret",
+    ],
   },
   {
     slug: "sunrise-boat-tour",
@@ -156,6 +168,7 @@ const seedTours: Tour[] = [
       "Departs strictly at 05:00 — late arrivals cannot be waited for.",
       "Cancelled without charge if the coast guard issues a small-craft warning.",
     ],
+    speciesSlugs: ["blue-water-lily", "common-reed"],
   },
   {
     slug: "lakeside-community-homestay",
@@ -212,6 +225,7 @@ const seedTours: Tour[] = [
       "Accommodation is basic — shared bathroom, fan-cooled room.",
       "Alcohol is not permitted inside the homestay.",
     ],
+    speciesSlugs: ["milkfish", "mudfish", "nile-tilapia"],
   },
   {
     slug: "educational-research-trek",
@@ -266,6 +280,16 @@ const seedTours: Tour[] = [
     notes: [
       "Group bookings only, minimum of 8 participants.",
       "The transect crosses uneven ground and shallow water — not suitable for limited mobility.",
+    ],
+    speciesSlugs: [
+      "flathead-goby",
+      "common-green-frog",
+      "water-monitor",
+      "common-sunken-eyed-skink",
+      "large-flying-fox",
+      "common-fruit-bat",
+      "water-hyacinth",
+      "freshwater-mangrove",
     ],
   },
 ];
@@ -331,6 +355,7 @@ function toTour(row: Tables<"tours">): Tour {
     tariff: toTariff(row.tariff),
     bring: row.what_to_bring ?? [],
     notes: row.notes ?? [],
+    speciesSlugs: row.species_slugs ?? [],
   };
 }
 
@@ -382,4 +407,47 @@ export async function getTour(slug: string): Promise<Tour | undefined> {
     },
     () => seedTours.find((tour) => tour.slug === slug),
   );
+}
+
+/**
+ * Packages built around a species, for the record page (FR-1.3). The link is
+ * `tours.species_slugs`, so a package shows up on every record it names.
+ */
+export async function getToursForSpecies(
+  slug: string,
+  limit = 3,
+): Promise<Tour[]> {
+  "use cache";
+  cacheLife("hours");
+  cacheTag("tours", "species");
+
+  const tours = await getTours();
+  return tours
+    .filter((tour) => tour.speciesSlugs.includes(slug))
+    .slice(0, limit);
+}
+
+/**
+ * Other packages to pair with this one. Same-category packages come first so a
+ * birding trip points at the rest of the birding trips before the homestays.
+ */
+export async function getRelatedTours(
+  slug: string,
+  limit = 3,
+): Promise<Tour[]> {
+  "use cache";
+  cacheLife("hours");
+  cacheTag("tours");
+
+  const tours = await getTours();
+  const current = tours.find((tour) => tour.slug === slug);
+  if (!current) return tours.slice(0, limit);
+
+  const others = tours.filter((tour) => tour.slug !== slug);
+  const sameCategory = others.filter(
+    (tour) => tour.category === current.category,
+  );
+  const rest = others.filter((tour) => tour.category !== current.category);
+
+  return [...sameCategory, ...rest].slice(0, limit);
 }
