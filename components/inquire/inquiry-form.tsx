@@ -152,8 +152,6 @@ function InquiryFields({
     }
 
     setPending(true);
-    // A short pause so the pending state is visible; there is no server call yet.
-    await new Promise((resolve) => setTimeout(resolve, 450));
 
     const inquiry = await createInquiry({
       userEmail: user.email,
@@ -166,6 +164,15 @@ function InquiryFields({
       partySize: party,
       message: values.message.trim(),
     });
+
+    // The record is already saved locally; the emails are a best-effort side
+    // effect, so a failed send never blocks the confirmation screen.
+    void fetch("/api/inquiries/notify", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(inquiry),
+      keepalive: true,
+    }).catch(() => {});
 
     setSent(inquiry);
     setPending(false);
