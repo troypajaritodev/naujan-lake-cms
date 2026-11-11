@@ -181,7 +181,10 @@ export default async function WildlifePage() {
                   <ul className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
                     {entries.map((entry) => (
                       <li key={entry.slug}>
-                        <article className="flex h-full flex-col rounded-2xl bg-white p-5 ring-1 ring-ink/8 transition-shadow duration-300 hover:ring-ink/16">
+                        <Link
+                          href={`/wildlife/${entry.slug}`}
+                          className="group flex h-full flex-col rounded-2xl bg-white p-5 ring-1 ring-ink/8 transition-shadow duration-300 hover:ring-ink/16 focus-visible:ring-2 focus-visible:ring-lake-700/40 focus-visible:outline-none"
+                        >
                           <div className="flex items-start justify-between gap-3">
                             <div className="min-w-0">
                               <h3 className="text-[15.5px] leading-snug font-medium text-ink">
@@ -227,7 +230,16 @@ export default async function WildlifePage() {
                               {seasonalityLabels[entry.seasonality]}
                             </p>
                           </div>
-                        </article>
+
+                          <span className="mt-3 inline-flex items-center gap-1 text-[11.5px] font-semibold text-lake-800">
+                            View record
+                            <ArrowUpRight
+                              className="size-3.5 transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5"
+                              strokeWidth={2}
+                              aria-hidden="true"
+                            />
+                          </span>
+                        </Link>
                       </li>
                     ))}
                   </ul>

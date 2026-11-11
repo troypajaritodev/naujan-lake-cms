@@ -439,6 +439,36 @@ export async function getSpeciesByGroup(): Promise<
   return groupSpecies(groups, entries);
 }
 
+/** One species record, by URL slug (FR-5). */
+export async function getSpeciesBySlug(
+  slug: string,
+): Promise<Species | undefined> {
+  "use cache";
+  cacheLife("hours");
+  cacheTag("species", "categories");
+
+  const entries = await getSpecies();
+  return entries.find((entry) => entry.slug === slug);
+}
+
+/** Other records from the same group, for the species detail page. */
+export async function getRelatedSpecies(
+  slug: string,
+  limit = 4,
+): Promise<Species[]> {
+  "use cache";
+  cacheLife("hours");
+  cacheTag("species", "categories");
+
+  const entries = await getSpecies();
+  const current = entries.find((entry) => entry.slug === slug);
+  if (!current) return [];
+
+  return entries
+    .filter((entry) => entry.group === current.group && entry.slug !== slug)
+    .slice(0, limit);
+}
+
 export function speciesCountByStatus(
   entries: Species[],
   status: ConservationStatus,
