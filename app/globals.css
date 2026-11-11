@@ -18,7 +18,8 @@
   --color-sand-300: #d8ceba;
   --color-sand-400: #c0b197;
   --color-sand-500: #a89478;
-  --color-sand-600: #8d7a61;
+  /* Darkened from #8d7a61 so small secondary text clears WCAG AA (4.5:1) on sand-50, white and sand-100. */
+  --color-sand-600: #7c6a54;
   --color-sand-700: #6f5f4c;
   --color-sand-800: #574a3c;
   --color-sand-900: #3f362b;
