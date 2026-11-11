@@ -3,9 +3,17 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, type ReactNode } from "react";
-import { ArrowUpRight, Inbox, Loader2, LogOut, Users } from "lucide-react";
+import {
+  ArrowRight,
+  ArrowUpRight,
+  Inbox,
+  Loader2,
+  LogOut,
+  Users,
+} from "lucide-react";
 import BrandMark from "@/components/brand-mark";
 import { useAuth } from "@/components/auth-provider";
+import { useInquiryAlerts } from "@/lib/inquiry-alerts";
 
 const navigation = [
   {
@@ -26,6 +34,7 @@ export default function AdminShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const { user, ready, signOut } = useAuth();
+  const { pending } = useInquiryAlerts();
 
   const authorised = ready && user?.role === "admin";
 
@@ -97,6 +106,15 @@ export default function AdminShell({ children }: { children: ReactNode }) {
                     {item.hint}
                   </span>
                 </span>
+                {item.href === "/admin/inquiries" && pending > 0 ? (
+                  <span className="ml-auto inline-flex items-center gap-1.5 rounded-full bg-alert-500/15 px-2 py-0.5 text-[10.5px] font-semibold text-alert-100 ring-1 ring-alert-500/40 ring-inset tabular-nums">
+                    <span className="size-1.5 rounded-full bg-alert-500" />
+                    {pending}
+                    <span className="sr-only">
+                      {pending === 1 ? "pending request" : "pending requests"}
+                    </span>
+                  </span>
+                ) : null}
               </Link>
             );
           })}
@@ -145,9 +163,32 @@ export default function AdminShell({ children }: { children: ReactNode }) {
             </h1>
           </div>
 
-          <span className="rounded-full bg-moss-50 px-3 py-1 text-[10px] font-semibold tracking-[0.12em] text-moss-700 uppercase ring-1 ring-moss-600/20 ring-inset">
-            Administrator
-          </span>
+          <div className="flex items-center gap-2.5">
+            {pending > 0 ? (
+              <Link
+                href="/admin/inquiries"
+                className="group inline-flex items-center gap-2 rounded-full border border-alert-500/25 bg-alert-50 py-1.5 pr-2.5 pl-3 text-[11.5px] font-semibold text-alert-700 transition-colors hover:border-alert-500/40 hover:bg-alert-100"
+                aria-label={`${pending} pending ${pending === 1 ? "request" : "requests"} awaiting review`}
+              >
+                <span className="relative flex size-2 shrink-0" aria-hidden="true">
+                  <span className="absolute inline-flex size-full animate-ping rounded-full bg-alert-500/60" />
+                  <span className="relative inline-flex size-2 rounded-full bg-alert-500" />
+                </span>
+                <span className="tabular-nums">{pending}</span>
+                <span className="hidden font-medium sm:inline">
+                  {pending === 1 ? "request" : "requests"} awaiting review
+                </span>
+                <ArrowRight
+                  className="size-3 transition-transform group-hover:translate-x-0.5"
+                  strokeWidth={2.4}
+                />
+              </Link>
+            ) : null}
+
+            <span className="rounded-full bg-moss-50 px-3 py-1 text-[10px] font-semibold tracking-[0.12em] text-moss-700 uppercase ring-1 ring-moss-600/20 ring-inset">
+              Administrator
+            </span>
+          </div>
         </header>
 
         <main className="flex-1 px-5 py-8 sm:px-8">{children}</main>
