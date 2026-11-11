@@ -11,47 +11,26 @@
 import { cacheLife, cacheTag } from "next/cache";
 import { getSupabaseClient, type Tables } from "@/lib/supabase";
 import { fetchOrFallback, queryError } from "@/lib/supabase/query";
+import {
+  type ConservationStatus,
+  type Seasonality,
+  type Species,
+  type WildlifeGroup,
+} from "@/lib/species-meta";
 
-export type ConservationStatus = "CR" | "EN" | "VU" | "NT" | "LC" | "DD";
+export {
+  conservationLabels,
+  conservationStatuses,
+  seasonalityLabels,
+  seasonalities,
+} from "@/lib/species-meta";
 
-export type Seasonality = "RESIDENT" | "MIGRATORY" | "SEASONAL";
-
-export type WildlifeGroup = {
-  /** Matches the `categories.id` UUID from the schema. */
-  id: string;
-  slug: string;
-  name: string;
-  shortName: string;
-  description: string;
-};
-
-export type Species = {
-  slug: string;
-  /** Matches `WildlifeGroup.slug` — the `categories` foreign key. */
-  group: string;
-  commonName: string;
-  localName?: string;
-  scientificName: string;
-  status: ConservationStatus;
-  seasonality: Seasonality;
-  habitat: string;
-  description: string;
-};
-
-export const conservationLabels: Record<ConservationStatus, string> = {
-  CR: "Critically endangered",
-  EN: "Endangered",
-  VU: "Vulnerable",
-  NT: "Near threatened",
-  LC: "Least concern",
-  DD: "Data deficient",
-};
-
-export const seasonalityLabels: Record<Seasonality, string> = {
-  RESIDENT: "Resident year-round",
-  MIGRATORY: "Migratory visitor",
-  SEASONAL: "Seasonal",
-};
+export type {
+  ConservationStatus,
+  Seasonality,
+  Species,
+  WildlifeGroup,
+} from "@/lib/species-meta";
 
 const seedWildlifeGroups: WildlifeGroup[] = [
   {
@@ -474,4 +453,42 @@ export function speciesCountByStatus(
   status: ConservationStatus,
 ): number {
   return entries.filter((entry) => entry.status === status).length;
+}
+
+/** Query-string state for the catalogue search and facet filters (FR-5). */
+export type SpeciesFilter = {
+  q?: string;
+  category?: string;
+  status?: ConservationStatus;
+  season?: Seasonality;
+};
+
+const SEARCH_FIELDS = [
+  "commonName",
+  "localName",
+  "scientificName",
+  "habitat",
+  "description",
+] as const;
+
+export function filterSpecies(
+  entries: Species[],
+  filter: SpeciesFilter,
+): Species[] {
+  const q = filter.q?.trim().toLowerCase();
+
+  return entries.filter((entry) => {
+    if (filter.category && entry.group !== filter.category) return false;
+    if (filter.status && entry.status !== filter.status) return false;
+    if (filter.season && entry.seasonality !== filter.season) return false;
+
+    if (q) {
+      const haystack = SEARCH_FIELDS.map((field) => entry[field] ?? "")
+        .join(" ")
+        .toLowerCase();
+      if (!haystack.includes(q)) return false;
+    }
+
+    return true;
+  });
 }

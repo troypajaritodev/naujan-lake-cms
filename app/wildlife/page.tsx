@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { Suspense } from "react";
 import {
   ArrowRight,
   ArrowUpRight,
@@ -10,23 +11,34 @@ import {
   Leaf,
   MapPin,
   PawPrint,
+  SearchX,
 } from "lucide-react";
 import SectionHeading from "@/components/section-heading";
+import WildlifeFilterBar from "@/components/wildlife/filter-bar";
 import {
   conservationLabels,
+  conservationStatuses,
+  filterSpecies,
   getSpecies,
   getWildlifeGroups,
   groupSpecies,
+  seasonalities,
   seasonalityLabels,
   speciesCountByStatus,
   type ConservationStatus,
+  type Seasonality,
+  type SpeciesFilter,
 } from "@/lib/species";
 
 export const metadata: Metadata = {
   title: "Wildlife catalogue",
   description:
-    "The birds, fish, reptiles, mammals and wetland plants recorded at Naujan Lake National Park — with scientific names, conservation status, seasonality and habitat.",
+    "The birds, fish, reptiles, mammals and wetland plants recorded at Naujan Lake National Park — with scientific names, conservation status, seasonality and habitat. Search and filter by group, status and season.",
   alternates: { canonical: "/wildlife" },
+};
+
+type WildlifePageProps = {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 };
 
 const groupIcons: Record<string, typeof Bird> = {
@@ -46,105 +58,108 @@ const statusStyles: Record<ConservationStatus, string> = {
   DD: "bg-sand-100 text-sand-800 ring-sand-500/30",
 };
 
-export default async function WildlifePage() {
+function first(value: string | string[] | undefined): string | undefined {
+  return typeof value === "string" ? value : undefined;
+}
+
+function readFilter(
+  params: Record<string, string | string[] | undefined>,
+  groupSlugs: string[],
+): SpeciesFilter {
+  const status = first(params.status);
+  const season = first(params.season);
+  const category = first(params.category);
+
+  return {
+    q: first(params.q)?.slice(0, 120),
+    category: category && groupSlugs.includes(category) ? category : undefined,
+    status:
+      status && conservationStatuses.includes(status as ConservationStatus)
+        ? (status as ConservationStatus)
+        : undefined,
+    season:
+      season && seasonalities.includes(season as Seasonality)
+        ? (season as Seasonality)
+        : undefined,
+  };
+}
+
+/**
+ * Awaiting `searchParams` suspends, so the filterable part of the catalogue
+ * lives behind a Suspense boundary while the hero and counts stay static.
+ */
+async function CataloguePanel({ searchParams }: WildlifePageProps) {
+  const params = await searchParams;
   const [groups, entries] = await Promise.all([
     getWildlifeGroups(),
     getSpecies(),
   ]);
-  const grouped = groupSpecies(groups, entries);
 
-  const threatened =
-    speciesCountByStatus(entries, "EN") +
-    speciesCountByStatus(entries, "VU") +
-    speciesCountByStatus(entries, "CR");
-
-  const facts = [
-    { value: String(groups.length), label: "taxonomic groups" },
-    { value: String(entries.length), label: "species on record" },
-    { value: String(threatened), label: "globally threatened" },
-    { value: "Oct–Mar", label: "peak birding season" },
-  ];
+  const filter = readFilter(
+    params,
+    groups.map((group) => group.slug),
+  );
+  const filtered = filterSpecies(entries, filter);
+  const grouped = groupSpecies(groups, filtered).filter(
+    (section) => section.species.length > 0,
+  );
 
   return (
     <>
-      <section className="relative isolate overflow-hidden bg-lake-950 pt-32 pb-16 lg:pt-40 lg:pb-20">
-        <div
-          aria-hidden="true"
-          className="pointer-events-none absolute inset-0 bg-[radial-gradient(90%_80%_at_85%_0%,rgba(51,135,133,0.28),transparent_60%)]"
+      <div className="mt-10">
+        <WildlifeFilterBar
+          groups={groups}
+          resultCount={filtered.length}
+          totalCount={entries.length}
         />
-        <div
-          aria-hidden="true"
-          className="pointer-events-none absolute -top-24 right-[-6rem] size-[320px] rounded-full border border-white/6"
-        />
+      </div>
 
-        <div className="relative mx-auto w-full max-w-7xl px-5 sm:px-8 lg:px-12">
-          <p className="flex items-center gap-3 text-[11px] font-medium tracking-[0.22em] text-sand-300/80 uppercase">
-            <span aria-hidden="true" className="h-px w-7 bg-sand-300/50" />
-            Wildlife catalogue
-          </p>
-
-          <div className="mt-5 grid gap-8 lg:grid-cols-12 lg:items-end">
-            <h1 className="font-display text-[clamp(2.2rem,5vw,3.6rem)] leading-[1.02] font-light tracking-[-0.02em] text-sand-50 lg:col-span-7">
-              The lake is a habitat
-              <br />
-              <span className="text-reed-200 italic">before it is a postcard.</span>
-            </h1>
-            <p className="max-w-md text-[15px] leading-[1.75] text-sand-200/75 lg:col-span-5">
-              Naujan Lake is a Ramsar wetland on the East Asian–Australasian
-              flyway. What follows is what the park office has actually recorded
-              — not everything that might pass through.
-            </p>
-          </div>
-
-          <dl className="mt-12 grid grid-cols-2 gap-px overflow-hidden rounded-2xl border border-white/10 bg-white/10 sm:grid-cols-4">
-            {facts.map((fact) => (
-              <div key={fact.label} className="bg-lake-950 px-5 py-4">
-                <dt className="text-[10px] font-semibold tracking-[0.16em] text-sand-300/60 uppercase">
-                  {fact.label}
-                </dt>
-                <dd className="mt-1.5 font-display text-[24px] leading-none text-sand-50">
-                  {fact.value}
-                </dd>
-              </div>
-            ))}
-          </dl>
-        </div>
-      </section>
-
-      <section className="border-b border-ink/8 bg-sand-50 py-5">
-        <div className="mx-auto flex w-full max-w-7xl flex-wrap items-center gap-2 px-5 sm:px-8 lg:px-12">
-          <span className="mr-1 text-[10.5px] font-semibold tracking-[0.16em] text-sand-600 uppercase">
-            Jump to
+      {filtered.length === 0 ? (
+        <div className="mt-10 rounded-2xl bg-white p-10 text-center ring-1 ring-ink/8">
+          <span className="mx-auto grid size-11 place-items-center rounded-full bg-sand-100 text-sand-600">
+            <SearchX className="size-5" strokeWidth={1.8} aria-hidden="true" />
           </span>
-          {grouped.map(({ group }) => {
-            const Icon = groupIcons[group.slug] ?? Leaf;
-            return (
-              <a
-                key={group.slug}
-                href={`#${group.slug}`}
-                className="group inline-flex items-center gap-1.5 rounded-full border border-ink/12 px-3 py-1.5 text-[12px] font-medium text-ink transition-colors hover:border-ink/25 hover:bg-white"
-              >
-                <Icon
-                  className="size-3.5 text-sand-600 transition-colors group-hover:text-lake-700"
-                  strokeWidth={1.9}
-                  aria-hidden="true"
-                />
-                {group.shortName}
-              </a>
-            );
-          })}
+          <h2 className="mt-4 font-display text-[22px] text-ink">
+            No species match those filters.
+          </h2>
+          <p className="mx-auto mt-2 max-w-md text-[13.5px] leading-relaxed text-ink-soft/80">
+            Try a shorter search term, or clear the group, status and season
+            filters. Records only cover what the park office has confirmed on
+            the lake.
+          </p>
         </div>
-      </section>
+      ) : (
+        <>
+          <nav
+            aria-label="Wildlife groups in the current results"
+            className="mt-8 flex flex-wrap items-center gap-2"
+          >
+            <span className="mr-1 text-[10.5px] font-semibold tracking-[0.16em] text-sand-600 uppercase">
+              Jump to
+            </span>
+            {grouped.map(({ group, species }) => {
+              const Icon = groupIcons[group.slug] ?? Leaf;
+              return (
+                <a
+                  key={group.slug}
+                  href={`#${group.slug}`}
+                  className="group inline-flex items-center gap-1.5 rounded-full border border-ink/12 px-3 py-1.5 text-[12px] font-medium text-ink transition-colors hover:border-ink/25 hover:bg-white"
+                >
+                  <Icon
+                    className="size-3.5 text-sand-600 transition-colors group-hover:text-lake-700"
+                    strokeWidth={1.9}
+                    aria-hidden="true"
+                  />
+                  {group.shortName}
+                  <span className="text-[10.5px] text-sand-600">
+                    {species.length}
+                  </span>
+                </a>
+              );
+            })}
+          </nav>
 
-      <div className="bg-sand-50 py-16 lg:py-20">
-        <div className="mx-auto w-full max-w-7xl px-5 sm:px-8 lg:px-12">
-          <SectionHeading
-            eyebrow="Field records"
-            title="Five groups, one water body"
-            description="Conservation status follows the IUCN Red List categories used by the park's species table. Seasonality describes when the species is present on the lake, not where it lives the rest of the year."
-          />
-
-          <div className="mt-14 space-y-16">
+          <div className="mt-10 space-y-16">
             {grouped.map(({ group, species: entries }) => {
               const Icon = groupIcons[group.slug] ?? Leaf;
 
@@ -158,7 +173,11 @@ export default async function WildlifePage() {
                   <div className="flex flex-col gap-3 border-b border-ink/10 pb-5 sm:flex-row sm:items-end sm:justify-between">
                     <div className="flex items-start gap-3">
                       <span className="mt-0.5 grid size-9 shrink-0 place-items-center rounded-xl bg-lake-800 text-sand-50">
-                        <Icon className="size-4.5" strokeWidth={1.8} aria-hidden="true" />
+                        <Icon
+                          className="size-4.5"
+                          strokeWidth={1.8}
+                          aria-hidden="true"
+                        />
                       </span>
                       <div>
                         <h2
@@ -247,6 +266,93 @@ export default async function WildlifePage() {
               );
             })}
           </div>
+        </>
+      )}
+    </>
+  );
+}
+
+export default async function WildlifePage({ searchParams }: WildlifePageProps) {
+  const [groups, entries] = await Promise.all([
+    getWildlifeGroups(),
+    getSpecies(),
+  ]);
+
+  const threatened =
+    speciesCountByStatus(entries, "EN") +
+    speciesCountByStatus(entries, "VU") +
+    speciesCountByStatus(entries, "CR");
+
+  const facts = [
+    { value: String(groups.length), label: "taxonomic groups" },
+    { value: String(entries.length), label: "species on record" },
+    { value: String(threatened), label: "globally threatened" },
+    { value: "Oct–Mar", label: "peak birding season" },
+  ];
+
+  return (
+    <>
+      <section className="relative isolate overflow-hidden bg-lake-950 pt-32 pb-16 lg:pt-40 lg:pb-20">
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0 bg-[radial-gradient(90%_80%_at_85%_0%,rgba(51,135,133,0.28),transparent_60%)]"
+        />
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute -top-24 right-[-6rem] size-[320px] rounded-full border border-white/6"
+        />
+
+        <div className="relative mx-auto w-full max-w-7xl px-5 sm:px-8 lg:px-12">
+          <p className="flex items-center gap-3 text-[11px] font-medium tracking-[0.22em] text-sand-300/80 uppercase">
+            <span aria-hidden="true" className="h-px w-7 bg-sand-300/50" />
+            Wildlife catalogue
+          </p>
+
+          <div className="mt-5 grid gap-8 lg:grid-cols-12 lg:items-end">
+            <h1 className="font-display text-[clamp(2.2rem,5vw,3.6rem)] leading-[1.02] font-light tracking-[-0.02em] text-sand-50 lg:col-span-7">
+              The lake is a habitat
+              <br />
+              <span className="text-reed-200 italic">
+                before it is a postcard.
+              </span>
+            </h1>
+            <p className="max-w-md text-[15px] leading-[1.75] text-sand-200/75 lg:col-span-5">
+              Naujan Lake is a Ramsar wetland on the East Asian–Australasian
+              flyway. What follows is what the park office has actually recorded
+              — not everything that might pass through.
+            </p>
+          </div>
+
+          <dl className="mt-12 grid grid-cols-2 gap-px overflow-hidden rounded-2xl border border-white/10 bg-white/10 sm:grid-cols-4">
+            {facts.map((fact) => (
+              <div key={fact.label} className="bg-lake-950 px-5 py-4">
+                <dt className="text-[10px] font-semibold tracking-[0.16em] text-sand-300/60 uppercase">
+                  {fact.label}
+                </dt>
+                <dd className="mt-1.5 font-display text-[24px] leading-none text-sand-50">
+                  {fact.value}
+                </dd>
+              </div>
+            ))}
+          </dl>
+        </div>
+      </section>
+
+      <div className="bg-sand-50 py-16 lg:py-20">
+        <div className="mx-auto w-full max-w-7xl px-5 sm:px-8 lg:px-12">
+          <SectionHeading
+            eyebrow="Field records"
+            title="Five groups, one water body"
+            description="Conservation status follows the IUCN Red List categories used by the park's species table. Seasonality describes when the species is present on the lake, not where it lives the rest of the year."
+          />
+
+          <Suspense
+            fallback={
+              <div className="mt-10 h-40 animate-pulse rounded-2xl bg-white ring-1 ring-ink/8" />
+            }
+          >
+            <CataloguePanel searchParams={searchParams} />
+          </Suspense>
         </div>
       </div>
 
