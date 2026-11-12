@@ -1,9 +1,10 @@
 # Accessibility notes
 
-A static WCAG 2.1 AA pass over the public portal and the admin shell. There is
-no automated axe/Lighthouse run in this repository yet (see "Follow-ups"), so
-everything below was checked by reading the markup and computing the contrast
-ratios from the tokens in `app/globals.css`.
+A static WCAG 2.1 AA pass over the public portal and the admin shell,
+followed by an automated Lighthouse 13.6 audit against a production build
+(`next start`). Everything below was checked by reading the markup, computing
+the contrast ratios from the tokens in `app/globals.css`, and running the
+Lighthouse/axe category audits (2026-11-12).
 
 ## What is in place
 
@@ -36,19 +37,48 @@ Normal text needs 4.5:1, large text and UI graphics 3:1.
 - Body copy on dark sections uses `sand-200/75` or lighter, all above 6:1.
 - `alert-700` on `alert-50` (severity badges) is about **8:1**.
 
+## Automated audit (Lighthouse 13.6)
+
+Run against `next start` (production build) on every public route, plus
+field-style web vitals collected with `PerformanceObserver` (LCP/CLS) and the
+mobile-throttled lab run for the lab score.
+
+| Route | Accessibility | Best practices | SEO | LCP | CLS |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| `/` | 1.0 | 1.0 | 1.0 | 0.32s | 0 |
+| `/wildlife` | 1.0 | 1.0 | 1.0 | 0.22s | 0 |
+| `/wildlife/[slug]` | 1.0 | 1.0 | 1.0 | 0.42s | 0 |
+| `/tours` | 1.0 | 1.0 | 1.0 | 0.36s | 0 |
+| `/tours/[slug]` | 1.0 | 1.0 | 1.0 | 0.68s | 0 |
+| `/advisories` | 1.0 | 1.0 | 1.0 | 0.20s | 0 |
+| `/guidelines` | 1.0 | 1.0 | 1.0 | 0.23s | 0 |
+| `/inquire` | 1.0 | 1.0 | 1.0 | 0.23s | 0 |
+| `/subscribe` | 1.0 | 1.0 | 1.0 | 0.26s | 0 |
+| `/login` | 1.0 | 1.0 | n/a¹ | 0.22s | 0 |
+
+¹ `/login`, `/register`, `/account` and `/admin` are deliberately
+`robots: { index: false }` (auth/admin chrome must not be indexed), so their
+SEO category score is expected to be below 1 and is not tracked.
+
+Targets: accessibility 1.0, SEO ≥ 0.9 on indexable pages, LCP < 2.0s,
+CLS < 0.1 — all met. Mobile-throttled lab LCP/CLS on `/`, `/wildlife/[slug]`
+and `/guidelines` were 0.79–1.09s / 0, also inside target.
+
+### Findings fixed in the audit pass
+
+| Finding | Where | Fix |
+| :--- | :--- | :--- |
+| `color-contrast` 2.8:1 | `components/home/explore-cards.tsx` — `text-sand-500` card numerals | → `text-sand-600` (4.9:1) |
+| `color-contrast` 2.01:1 | `components/guidelines/zoning-section.tsx`, `app/guidelines/page.tsx` — `text-sand-400` mono numerals | → `text-sand-600` |
+| `color-contrast` ~4.1:1 | `components/subscribe/subscribe-form.tsx` — `text-ink-soft/70` topic descriptions | → `text-ink-soft/85` |
+| `label-content-name-mismatch` | `components/site-header.tsx` — brand link `aria-label` said "…— home" which did not contain the visible "Naujan Lake National Park" | dropped the redundant `aria-label`; the visible text is the accessible name |
+| `definition-list` / `dlitem` | `components/home/visit-cta.tsx` — `<dt>`/`<dd>` wrapped in extra `div`s inside `<dl>` | icon moved inside `<dt>`, `<dd>` a direct child of the group wrapper |
+
 ## Follow-ups
 
-- **Automated audit.** Run Lighthouse and axe (or `@axe-core/cli`) against a
-  production build on `/`, `/wildlife`, `/wildlife/[slug]`, `/tours`,
-  `/tours/[slug]`, `/advisories`, `/guidelines`, `/inquire`, `/subscribe`,
-  `/login`, `/admin` once the open PRs merge. Track the scores in the README.
 - **Photography.** Hero sections place light type over photographs. The
   gradients in place keep it legible on the seeded images, but new images need
   the same treatment — check the worst case (bright sky) before uploading.
-- **`sand-500` icons.** Several small decorative icons (`#a89478`) measure
-  about 2.8:1 against `sand-50`. They always sit next to a text label, so they
-  are decorative under WCAG 1.4.11; if one ever becomes the only cue, pair it
-  with text or darken it.
 - **Admin tables.** Column headers are real `<th>` cells with `scope`, but the
   inquiry table has no caption. Add one when the CRUD rewrite lands in
   Milestone 2.

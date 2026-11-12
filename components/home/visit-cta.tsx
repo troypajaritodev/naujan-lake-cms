@@ -70,58 +70,52 @@ export default function VisitCta() {
 
             <div className="lg:col-span-5">
               <dl className="rounded-2xl border border-white/12 bg-white/4 p-6 backdrop-blur-sm">
-                <div className="flex items-start gap-3 border-b border-white/10 pb-4">
-                  <Clock
-                    className="mt-0.5 size-4 shrink-0 text-lake-300"
-                    strokeWidth={1.9}
-                    aria-hidden="true"
-                  />
-                  <div>
-                    <dt className="text-[10px] font-semibold tracking-[0.18em] text-sand-300/70 uppercase">
-                      Park hours
-                    </dt>
-                    <dd className="mt-1 text-[14px] text-sand-100">
-                      {site.hours}
-                    </dd>
-                  </div>
+                <div className="border-b border-white/10 pb-4">
+                  <dt className="flex items-center gap-2 text-[10px] font-semibold tracking-[0.18em] text-sand-300/70 uppercase">
+                    <Clock
+                      className="size-3.5 shrink-0 text-lake-300"
+                      strokeWidth={1.9}
+                      aria-hidden="true"
+                    />
+                    Park hours
+                  </dt>
+                  <dd className="mt-1 text-[14px] text-sand-100">
+                    {site.hours}
+                  </dd>
                 </div>
 
-                <div className="flex items-start gap-3 border-b border-white/10 py-4">
-                  <Phone
-                    className="mt-0.5 size-4 shrink-0 text-lake-300"
-                    strokeWidth={1.9}
-                    aria-hidden="true"
-                  />
-                  <div>
-                    <dt className="text-[10px] font-semibold tracking-[0.18em] text-sand-300/70 uppercase">
-                      Emergency
-                    </dt>
-                    <dd className="mt-1 text-[14px] text-sand-100">
-                      <a
-                        href={`tel:${site.emergency}`}
-                        className="underline decoration-white/25 underline-offset-4 transition-colors hover:decoration-white"
-                      >
-                        {site.emergency}
-                      </a>{" "}
-                      — municipal rescue and Coast Guard
-                    </dd>
-                  </div>
+                <div className="border-b border-white/10 py-4">
+                  <dt className="flex items-center gap-2 text-[10px] font-semibold tracking-[0.18em] text-sand-300/70 uppercase">
+                    <Phone
+                      className="size-3.5 shrink-0 text-lake-300"
+                      strokeWidth={1.9}
+                      aria-hidden="true"
+                    />
+                    Emergency
+                  </dt>
+                  <dd className="mt-1 text-[14px] text-sand-100">
+                    <a
+                      href={`tel:${site.emergency}`}
+                      className="underline decoration-white/25 underline-offset-4 transition-colors hover:decoration-white"
+                    >
+                      {site.emergency}
+                    </a>{" "}
+                    — municipal rescue and Coast Guard
+                  </dd>
                 </div>
 
-                <div className="flex items-start gap-3 pt-4">
-                  <Compass
-                    className="mt-0.5 size-4 shrink-0 text-lake-300"
-                    strokeWidth={1.9}
-                    aria-hidden="true"
-                  />
-                  <div>
-                    <dt className="text-[10px] font-semibold tracking-[0.18em] text-sand-300/70 uppercase">
-                      Access
-                    </dt>
-                    <dd className="mt-1 text-[14px] text-sand-100">
-                      Accredited operators only, from designated access points
-                    </dd>
-                  </div>
+                <div className="pt-4">
+                  <dt className="flex items-center gap-2 text-[10px] font-semibold tracking-[0.18em] text-sand-300/70 uppercase">
+                    <Compass
+                      className="size-3.5 shrink-0 text-lake-300"
+                      strokeWidth={1.9}
+                      aria-hidden="true"
+                    />
+                    Access
+                  </dt>
+                  <dd className="mt-1 text-[14px] text-sand-100">
+                    Accredited operators only, from designated access points
+                  </dd>
                 </div>
               </dl>
             </div>

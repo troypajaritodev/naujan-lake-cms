@@ -192,7 +192,7 @@ export default function SubscribeForm() {
                   <span className="block text-[13px] font-medium text-ink">
                     {topicLabels[topic]}
                   </span>
-                  <span className="mt-0.5 block text-[12px] leading-relaxed text-ink-soft/70">
+                  <span className="mt-0.5 block text-[12px] leading-relaxed text-ink-soft/85">
                     {topicDescriptions[topic]}
                   </span>
                 </span>

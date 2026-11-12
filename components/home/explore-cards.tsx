@@ -40,7 +40,7 @@ export default function ExploreCards() {
                   <h3 className="font-display text-[21px] leading-tight font-normal text-ink">
                     {card.title}
                   </h3>
-                  <span className="font-mono text-[11px] text-sand-500">
+                  <span className="font-mono text-[11px] text-sand-600">
                     {String(index + 1).padStart(2, "0")}
                   </span>
                 </div>
