@@ -73,9 +73,12 @@ Inquiry confirmations and staff alerts (FR-2.3) go through one transport in
 
 ## Accessibility
 
-`docs/accessibility.md` records the WCAG 2.1 AA pass: what is in place, the
-computed contrast ratios for the design tokens and the follow-ups (automated
-Lighthouse/axe run, admin table captions).
+`docs/accessibility.md` records the WCAG 2.1 AA pass and the automated
+Lighthouse 13.6 audit against the production build: accessibility 1.0,
+best-practices 1.0 and SEO 1.0 on every public route (auth/admin pages are
+deliberately noindexed), with LCP ≤ 0.68s and CLS = 0 on all ten routes.
+The doc also lists the contrast/aria fixes the audit surfaced and the
+remaining follow-ups (admin table captions).
 
 Inquiry and subscriber records stay in the browser until Supabase Auth is
 wired up (Milestone 4 of issue #1): the staff-facing reads are protected by

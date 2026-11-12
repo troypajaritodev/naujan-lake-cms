@@ -82,7 +82,7 @@ export default function GuidelinesPage() {
                     <span className="grid size-10 place-items-center rounded-xl bg-lake-800 text-sand-50 transition-colors duration-300 group-hover:bg-lake-700">
                       <Icon className="size-5" strokeWidth={1.7} aria-hidden="true" />
                     </span>
-                    <span className="font-mono text-[11px] text-sand-400">
+                    <span className="font-mono text-[11px] text-sand-600">
                       {String(index + 1).padStart(2, "0")}
                     </span>
                   </div>

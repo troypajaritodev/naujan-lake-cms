@@ -76,7 +76,7 @@ export default function ZoningSection() {
                   >
                     {zone.access}
                   </span>
-                  <span className="font-mono text-[11px] text-sand-400">
+                  <span className="font-mono text-[11px] text-sand-600">
                     {String(index + 1).padStart(2, "0")}
                   </span>
                 </div>
