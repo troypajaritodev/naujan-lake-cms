@@ -20,10 +20,7 @@ Four smaller things came out of the same review:
    `error.tsx`. The admin pages are now request-time (`await connection()`), so
    moving between them leaves the content area blank until the server answers,
    and a thrown server action takes out the whole screen.
-3. **The sidebar footer clips.** "View site" and "Sign out" sit in a wrapping
-   flex row that overflows the sidebar at narrow widths, cutting the first
-   label to "V site".
-4. **The PRD is stale.** `docs/PRD.md` §12.4 still marks "Publish advisories"
+3. **The PRD is stale.** `docs/PRD.md` §12.4 still marks "Publish advisories"
    and "Manage tour packages" as **Planned**, but both shipped in
    `feature/admin-crud` (`bd00fde`, `557c478`).
 
@@ -33,10 +30,17 @@ Four smaller things came out of the same review:
   guest, package and age), four module counters, and a way into each screen.
 - Navigating between admin screens shows a skeleton instead of blank space, and
   a failure inside the segment shows a recoverable error card, not a white page.
-- The sidebar footer stays legible at every width the sidebar is used at.
 - The PRD status table matches what is actually built.
 - `tsc`, `eslint`, `next build` clean; the overview verified in a real browser
   against seeded data.
+
+## Checked and dismissed
+
+The sidebar footer looked like it clipped "View site" to "V site" in a
+screenshot. It does not: the button measures 93 px with `scrollWidth ===
+clientWidth` inside a 224 px row, and the overlap is the Next.js dev-tools
+indicator in the bottom-left corner, which never renders in a production
+build. No change made.
 
 ## Out of scope
 
