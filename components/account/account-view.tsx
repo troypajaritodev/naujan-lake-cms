@@ -315,8 +315,8 @@ function AccountDashboard({ user }: { user: SessionUser }) {
 
               <button
                 type="button"
-                onClick={() => {
-                  signOut();
+                onClick={async () => {
+                  await signOut();
                   router.push("/");
                 }}
                 className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-full bg-white/10 px-4 py-3 text-[13px] font-semibold text-sand-50 transition-colors hover:bg-white/15"

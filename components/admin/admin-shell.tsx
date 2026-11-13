@@ -6,6 +6,7 @@ import { useEffect, type ReactNode } from "react";
 import {
   ArrowRight,
   ArrowUpRight,
+  Bird,
   Inbox,
   Loader2,
   LogOut,
@@ -16,6 +17,12 @@ import { useAuth } from "@/components/auth-provider";
 import { useInquiryAlerts } from "@/lib/inquiry-alerts";
 
 const navigation = [
+  {
+    href: "/admin/species",
+    label: "Species",
+    hint: "Wildlife catalogue",
+    icon: Bird,
+  },
   {
     href: "/admin/users",
     label: "Users",
@@ -139,8 +146,8 @@ export default function AdminShell({ children }: { children: ReactNode }) {
             </Link>
             <button
               type="button"
-              onClick={() => {
-                signOut();
+              onClick={async () => {
+                await signOut();
                 router.push("/");
               }}
               className="inline-flex items-center gap-1.5 rounded-full border border-white/20 px-3 py-1.5 text-[11.5px] font-medium text-sand-100 transition-colors hover:bg-white/10"

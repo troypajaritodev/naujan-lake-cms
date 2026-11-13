@@ -248,12 +248,16 @@ create policy users_admin_write on public.users
 drop policy if exists categories_public_read on public.categories;
 create policy categories_public_read on public.categories for select using (true);
 
+grant select on public.categories to anon, authenticated;
+
 drop policy if exists categories_admin_write on public.categories;
 create policy categories_admin_write on public.categories
   for all using (public.is_admin()) with check (public.is_admin());
 
 drop policy if exists species_public_read on public.species;
 create policy species_public_read on public.species for select using (true);
+
+grant select on public.species to anon, authenticated;
 
 drop policy if exists species_admin_write on public.species;
 create policy species_admin_write on public.species
@@ -326,9 +330,9 @@ on conflict (slug) do nothing;
 
 insert into public.tours
   (id, title, slug, category, summary, duration, departure, rate_per_person, max_capacity,
-   difficulty, inclusions, what_to_bring, notes, species_slugs, itinerary, tariff, featured_image)
+   difficulty, inclusions, what_to_bring, notes, itinerary, tariff, species_slugs, featured_image)
 values
-  ('t1000000-0000-4000-8000-000000000001', 'Guided birdwatching expedition', 'guided-birdwatching-expedition',
+  ('d1000000-0000-4000-8000-000000000001', 'Guided birdwatching expedition', 'guided-birdwatching-expedition',
    'Birdwatching',
    'A slow morning run along the marsh edge with a trained spotter, timed to the migratory season and the tide.',
    '3–4 hours', '05:30, park jetty', 1850, 6, 'EASY',
@@ -339,7 +343,7 @@ values
    '[{"label":"Boat rental and operator","amount":700},{"label":"Licensed birding guide","amount":600},{"label":"Environmental fee","amount":300},{"label":"Binocular hire","amount":250}]'::jsonb,
    array['philippine-duck', 'little-egret', 'purple-heron', 'wandering-whistling-duck', 'great-egret'],
    '/images/ducklings.jpg'),
-  ('t1000000-0000-4000-8000-000000000002', 'Sunrise boat tour', 'sunrise-boat-tour',
+  ('d1000000-0000-4000-8000-000000000002', 'Sunrise boat tour', 'sunrise-boat-tour',
    'Scenic',
    'Out before the light, back before the heat. The classic first look at the lake and the mountains behind it.',
    '2 hours', '05:00, park jetty', 1200, 8, 'EASY',
@@ -350,7 +354,7 @@ values
    '[{"label":"Boat rental and operator","amount":700},{"label":"Fuel and crew","amount":200},{"label":"Environmental fee","amount":300}]'::jsonb,
    array['blue-water-lily', 'common-reed'],
    '/images/hero-lake.jpg'),
-  ('t1000000-0000-4000-8000-000000000003', 'Lakeside community homestay', 'lakeside-community-homestay',
+  ('d1000000-0000-4000-8000-000000000003', 'Lakeside community homestay', 'lakeside-community-homestay',
    'Cultural',
    'An overnight with a host family in a lakeside barangay — fishing stories, local cooking, and a dawn paddle.',
    '2 days, 1 night', '14:00, barangay hall', 2400, 4, 'MODERATE',
@@ -361,7 +365,7 @@ values
    '[{"label":"Homestay (per night)","amount":900},{"label":"Meals (4)","amount":700},{"label":"Village guide","amount":500},{"label":"Environmental fee","amount":300}]'::jsonb,
    array['milkfish', 'mudfish', 'nile-tilapia'],
    '/images/shoreline.jpg'),
-  ('t1000000-0000-4000-8000-000000000004', 'Educational research trek', 'educational-research-trek',
+  ('d1000000-0000-4000-8000-000000000004', 'Educational research trek', 'educational-research-trek',
    'Research',
    'A field session for student groups: transect walks, water sampling points and an introduction to wetland survey methods.',
    '6 hours', '06:00, park office', 1500, 15, 'CHALLENGING',
@@ -399,12 +403,12 @@ on conflict (slug) do nothing;
 insert into public.tour_inquiries
   (id, reference_code, tour_id, user_id, full_name, email, phone, target_date, party_size, notes, status, created_at)
 values
-  ('i1000000-0000-4000-8000-000000000001', 'NL-2026-104882',
-   't1000000-0000-4000-8000-000000000002', '22222222-2222-4222-8222-222222222222',
+  ('e1000000-0000-4000-8000-000000000001', 'NL-2026-104882',
+   'd1000000-0000-4000-8000-000000000002', '22222222-2222-4222-8222-222222222222',
    'Demo Visitor', 'visitor@example.com', '+63 917 000 0002', '2026-11-14', 2,
    'Coming from Calapan, can we leave a motorbike at the jetty?', 'PENDING', '2026-11-06T09:12:00Z'),
-  ('i1000000-0000-4000-8000-000000000002', 'NL-2026-103417',
-   't1000000-0000-4000-8000-000000000001', '33333333-3333-4333-8333-333333333333',
+  ('e1000000-0000-4000-8000-000000000002', 'NL-2026-103417',
+   'd1000000-0000-4000-8000-000000000001', '33333333-3333-4333-8333-333333333333',
    'Ana Reyes', 'ana.reyes@example.com', '+63 918 442 1180', '2026-11-21', 4,
    'Two of us have binoculars already.', 'CONFIRMED', '2026-11-02T07:40:00Z')
 on conflict (reference_code) do nothing;

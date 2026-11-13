@@ -26,8 +26,9 @@ npm run lint     # eslint
 Phase 1 (public portal) and Phase 2 (admin shell) are implemented. Phase 3 is in
 progress: the Supabase read layer, the site-wide advisory banner, species
 records with search and filters, related tours, inquiry emails, baseline
-security and a WCAG notes pass have shipped; admin CRUD, Supabase Auth and the
-RLS verification are next. The per-use-case status table lives in
+security and a WCAG notes pass have shipped; species CRUD now uses protected
+server actions. Supabase Auth and the remaining RLS verification are next. The
+per-use-case status table lives in
 [`docs/PRD.md` §12.4](./docs/PRD.md#124-implementation-status).
 
 No database or `.env.local` is required to run the site — see *Data layer* below.
@@ -41,13 +42,25 @@ database: that is demo mode.
 1. Create a Supabase project and run [`supabase/schema.sql`](./supabase/schema.sql)
    in the SQL editor. It creates the seven tables, the RLS policies and the demo
    seed rows.
-2. Copy `.env.example` to `.env.local` and fill in the two values from
-   Supabase → Project Settings → API.
-3. Restart `npm run dev`.
+2. Run [`supabase/seed_species.sql`](./supabase/seed_species.sql) in the SQL
+   editor after the schema. It imports the 18 existing catalogue records with
+   stable IDs and `ON CONFLICT (slug) DO NOTHING`, so re-running it does not
+   duplicate records or overwrite edits.
+3. Copy `.env.example` to `.env.local`. Set the public URL and anon key from
+   Supabase → Project Settings → API. To enable admin species CRUD, also set
+   `SUPABASE_SERVICE_ROLE_KEY` there and in the server deployment environment;
+   never expose that key to the browser or use a `NEXT_PUBLIC_` prefix.
+4. Restart `npm run dev`.
+
+Admin sign-in verifies the active admin row and password hash in `public.users`
+before issuing an eight-hour HttpOnly session cookie. CRUD uses the server-only
+service-role client; the browser anon key and public RLS policies are not used
+to authorize writes. Without the service-role key, public reads still work but
+admin species CRUD reports a configuration error.
 
 | Module | Supabase table | Fallback |
 | :--- | :--- | :--- |
-| `lib/species.ts` | `categories`, `species` | seed catalogue in the same file |
+| `lib/species.ts` | `categories`, `species` | seed catalogue when unconfigured or a query fails |
 | `lib/tours.ts` | `tours` (active rows only) | seed packages in the same file |
 | `lib/advisories.ts` | `advisories` (published rows only) | seed notices in the same file |
 | `lib/guidelines.ts` | — | static copy (no table yet) |
@@ -55,8 +68,10 @@ database: that is demo mode.
 | `lib/subscribers.ts` | `subscribers` (planned, needs auth) | `localStorage` demo store |
 
 Reads are memoised with Next.js `use cache` (`cacheLife("hours")`) and tagged
-`species`, `categories`, `tours` and `advisories`, so the admin CRUD can
-invalidate them with `revalidateTag` once it lands.
+`species`, `categories`, `tours` and `advisories`. Species admin actions use
+`updateTag("species")` so edits and deletes are visible on the public pages
+immediately. A configured but empty species table remains empty until seeded;
+it does not silently substitute the demo records.
 
 ## Email
 

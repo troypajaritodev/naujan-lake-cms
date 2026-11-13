@@ -324,6 +324,7 @@ function toSpecies(
   groupSlugById: Map<string, string>,
 ): Species {
   return {
+    id: row.id,
     slug: row.slug,
     group: groupSlugById.get(row.category_id) ?? seedWildlifeGroups[0].slug,
     commonName: row.common_name,
@@ -333,6 +334,7 @@ function toSpecies(
     seasonality: row.seasonality,
     habitat: row.habitat,
     description: row.description,
+    featuredImage: row.featured_image,
   };
 }
 
@@ -354,7 +356,7 @@ export async function getWildlifeGroups(): Promise<WildlifeGroup[]> {
         .order("sort_order", { ascending: true });
 
       if (error) throw queryError("categories", error.message);
-      return data && data.length > 0 ? data.map(toGroup) : seedWildlifeGroups;
+      return (data ?? []).map(toGroup);
     },
     () => seedWildlifeGroups,
   );
@@ -383,9 +385,7 @@ export async function getSpecies(): Promise<Species[]> {
         .order("common_name", { ascending: true });
 
       if (error) throw queryError("species", error.message);
-      return data && data.length > 0
-        ? data.map((row) => toSpecies(row, groupSlugById))
-        : seedSpecies;
+      return (data ?? []).map((row) => toSpecies(row, groupSlugById));
     },
     () => seedSpecies,
   );

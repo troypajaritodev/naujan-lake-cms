@@ -21,6 +21,10 @@ import {
   type RegisterInput,
   type SessionUser,
 } from "@/lib/auth";
+import {
+  endAdminSessionAction,
+  startAdminSessionAction,
+} from "@/lib/admin-session-actions";
 
 type AuthValue = {
   user: SessionUser | null;
@@ -28,7 +32,7 @@ type AuthValue = {
   ready: boolean;
   register: (input: RegisterInput) => Promise<SessionUser>;
   signIn: (email: string, password: string) => Promise<SessionUser>;
-  signOut: () => void;
+  signOut: () => Promise<void>;
   updateProfile: (input: ProfileInput) => SessionUser;
   changePassword: (current: string, next: string) => Promise<void>;
 };
@@ -54,11 +58,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const signIn = useCallback(async (email: string, password: string) => {
-    return signInRecord(email, password);
+    const user = await signInRecord(email, password);
+    if (user.role === "admin") {
+      try {
+        await startAdminSessionAction(email, password);
+      } catch (error) {
+        signOutRecord();
+        throw error;
+      }
+    }
+    return user;
   }, []);
 
-  const signOut = useCallback(() => {
+  const signOut = useCallback(async () => {
     signOutRecord();
+    await endAdminSessionAction();
   }, []);
 
   const updateProfile = useCallback((input: ProfileInput) => {

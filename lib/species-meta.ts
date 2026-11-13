@@ -22,6 +22,8 @@ export type WildlifeGroup = {
 };
 
 export type Species = {
+  /** Supabase row ID; absent only for the local demo catalogue. */
+  id?: string;
   slug: string;
   /** Matches `WildlifeGroup.slug` — the `categories` foreign key. */
   group: string;
@@ -32,6 +34,7 @@ export type Species = {
   seasonality: Seasonality;
   habitat: string;
   description: string;
+  featuredImage?: string;
 };
 
 export const conservationLabels: Record<ConservationStatus, string> = {
