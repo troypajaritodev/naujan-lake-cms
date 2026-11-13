@@ -9,6 +9,7 @@ import {
   Inbox,
   Loader2,
   LogOut,
+  Megaphone,
   Users,
 } from "lucide-react";
 import BrandMark from "@/components/brand-mark";
@@ -27,6 +28,12 @@ const navigation = [
     label: "Inquiries",
     hint: "Requests and reports",
     icon: Inbox,
+  },
+  {
+    href: "/admin/advisories",
+    label: "Advisories",
+    hint: "Publish park notices",
+    icon: Megaphone,
   },
 ];
 

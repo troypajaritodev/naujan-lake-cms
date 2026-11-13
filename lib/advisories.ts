@@ -12,6 +12,11 @@
  */
 
 import { cacheLife, cacheTag } from "next/cache";
+import {
+  archivedAdvisories,
+  mergeAdvisories,
+  readOverrides,
+} from "@/lib/content-store";
 import { getSupabaseClient, type Tables } from "@/lib/supabase";
 import { fetchOrFallback, queryError } from "@/lib/supabase/query";
 
@@ -257,14 +262,18 @@ function toAdvisory(row: Tables<"advisories">): Advisory {
   };
 }
 
-/** Every published notice, newest first. */
-export async function getSortedAdvisories(): Promise<Advisory[]> {
+/**
+ * Rows exactly as the database (or the seeds) hold them, before any staff edit.
+ * Kept separate so the archive list can name a notice that is no longer
+ * published.
+ */
+async function baseAdvisories(): Promise<Advisory[]> {
   "use cache";
   cacheLife("hours");
   cacheTag("advisories");
 
   const client = getSupabaseClient();
-  if (!client) return sortNewestFirst(seedAdvisories);
+  if (!client) return seedAdvisories;
 
   return fetchOrFallback(
     "advisories",
@@ -275,12 +284,24 @@ export async function getSortedAdvisories(): Promise<Advisory[]> {
         .order("published_at", { ascending: false });
 
       if (error) throw queryError("advisories", error.message);
-      return data && data.length > 0
-        ? data.map(toAdvisory)
-        : sortNewestFirst(seedAdvisories);
+      return data && data.length > 0 ? data.map(toAdvisory) : seedAdvisories;
     },
-    () => sortNewestFirst(seedAdvisories),
+    () => seedAdvisories,
   );
+}
+
+/** Every published notice, newest first, with the admin panel's edits applied. */
+export async function getSortedAdvisories(): Promise<Advisory[]> {
+  "use cache";
+  cacheLife("hours");
+  cacheTag("advisories");
+
+  const [base, overrides] = await Promise.all([
+    baseAdvisories(),
+    readOverrides(),
+  ]);
+
+  return sortNewestFirst(mergeAdvisories(base, overrides));
 }
 
 export async function getAdvisory(slug: string): Promise<Advisory | undefined> {
@@ -288,25 +309,24 @@ export async function getAdvisory(slug: string): Promise<Advisory | undefined> {
   cacheLife("hours");
   cacheTag("advisories");
 
-  const client = getSupabaseClient();
-  if (!client) {
-    return seedAdvisories.find((advisory) => advisory.slug === slug);
-  }
+  // Resolved against the merged list so a notice published from the panel is
+  // reachable, and an archived one 404s.
+  const advisories = await getSortedAdvisories();
+  return advisories.find((advisory) => advisory.slug === slug);
+}
 
-  return fetchOrFallback(
-    `advisory ${slug}`,
-    async () => {
-      const { data, error } = await client
-        .from("advisories")
-        .select("*")
-        .eq("slug", slug)
-        .maybeSingle();
+/** Notices staff have taken down, for the archive half of the CMS screen. */
+export async function getArchivedAdvisories(): Promise<Advisory[]> {
+  "use cache";
+  cacheLife("hours");
+  cacheTag("advisories");
 
-      if (error) throw queryError("advisory", error.message);
-      return data ? toAdvisory(data) : undefined;
-    },
-    () => seedAdvisories.find((advisory) => advisory.slug === slug),
-  );
+  const [base, overrides] = await Promise.all([
+    baseAdvisories(),
+    readOverrides(),
+  ]);
+
+  return sortNewestFirst(archivedAdvisories(base, overrides));
 }
 
 /** The newest notices, shaped for the home-page preview list. */

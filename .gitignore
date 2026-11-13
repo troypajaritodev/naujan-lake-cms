@@ -44,3 +44,6 @@ next-env.d.ts
 # workbuddy project notes and requirement documents
 .workbuddy-ai/
 *.docx
+
+# staff-authored content written by the admin CMS (demo transport)
+.data/
