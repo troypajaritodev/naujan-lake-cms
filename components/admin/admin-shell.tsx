@@ -7,6 +7,7 @@ import {
   ArrowRight,
   ArrowUpRight,
   Inbox,
+  LayoutDashboard,
   Loader2,
   LogOut,
   Megaphone,
@@ -18,6 +19,12 @@ import { useAuth } from "@/components/auth-provider";
 import { useInquiryAlerts } from "@/lib/inquiry-alerts";
 
 const navigation = [
+  {
+    href: "/admin",
+    label: "Overview",
+    hint: "What needs attention",
+    icon: LayoutDashboard,
+  },
   {
     href: "/admin/users",
     label: "Users",
@@ -96,7 +103,12 @@ export default function AdminShell({ children }: { children: ReactNode }) {
           className="mt-8 flex gap-1 overflow-x-auto pb-1 lg:flex-col lg:overflow-visible lg:pb-0"
         >
           {navigation.map((item) => {
-            const isActive = pathname.startsWith(item.href);
+            // `/admin` is a prefix of every other item, so the landing page
+            // only matches exactly.
+            const isActive =
+              item.href === "/admin"
+                ? pathname === "/admin"
+                : pathname.startsWith(item.href);
 
             return (
               <Link
