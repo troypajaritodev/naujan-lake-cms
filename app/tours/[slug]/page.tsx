@@ -43,6 +43,14 @@ export async function generateStaticParams() {
   return tours.map((tour) => ({ slug: tour.slug }));
 }
 
+/**
+ * Every byte of this page is a function of the slug, and the admin panel can
+ * change a package at any time, so there is no meaningful shell to render
+ * before `params` resolve. Opting out of instant-navigation validation says so
+ * instead of leaving a "dropped segment" warning behind every price edit.
+ */
+export const instant = false;
+
 export async function generateMetadata({
   params,
 }: TourPageProps): Promise<Metadata> {

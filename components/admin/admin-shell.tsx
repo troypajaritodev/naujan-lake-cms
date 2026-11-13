@@ -10,6 +10,7 @@ import {
   Loader2,
   LogOut,
   Megaphone,
+  Route,
   Users,
 } from "lucide-react";
 import BrandMark from "@/components/brand-mark";
@@ -34,6 +35,12 @@ const navigation = [
     label: "Advisories",
     hint: "Publish park notices",
     icon: Megaphone,
+  },
+  {
+    href: "/admin/tours",
+    label: "Packages",
+    hint: "Rates, seats and availability",
+    icon: Route,
   },
 ];
 

@@ -8,6 +8,11 @@
  */
 
 import { cacheLife, cacheTag } from "next/cache";
+import {
+  applyTourEdits,
+  mergeTours,
+  readOverrides,
+} from "@/lib/content-store";
 import { getSupabaseClient, type Tables } from "@/lib/supabase";
 import { fetchOrFallback, queryError } from "@/lib/supabase/query";
 
@@ -359,8 +364,8 @@ function toTour(row: Tables<"tours">): Tour {
   };
 }
 
-/** Active packages, in the order the public listing shows them. */
-export async function getTours(): Promise<Tour[]> {
+/** Rows as the database (or the seeds) hold them, before any staff edit. */
+async function baseTours(): Promise<Tour[]> {
   "use cache";
   cacheLife("hours");
   cacheTag("tours");
@@ -384,29 +389,34 @@ export async function getTours(): Promise<Tour[]> {
   );
 }
 
+/** Active packages, in the order the public listing shows them. */
+export async function getTours(): Promise<Tour[]> {
+  "use cache";
+  cacheLife("hours");
+  cacheTag("tours");
+
+  const [base, overrides] = await Promise.all([baseTours(), readOverrides()]);
+  return mergeTours(base, overrides);
+}
+
 export async function getTour(slug: string): Promise<Tour | undefined> {
   "use cache";
   cacheLife("hours");
   cacheTag("tours");
 
-  const client = getSupabaseClient();
-  if (!client) return seedTours.find((tour) => tour.slug === slug);
+  // Resolved against the merged list so staff edits reach the detail page.
+  const tours = await getTours();
+  return tours.find((tour) => tour.slug === slug);
+}
 
-  return fetchOrFallback(
-    `tour ${slug}`,
-    async () => {
-      const { data, error } = await client
-        .from("tours")
-        .select("*")
-        .eq("slug", slug)
-        .eq("is_active", true)
-        .maybeSingle();
+/** Every package including unpublished ones — the admin manager's view. */
+export async function getToursForAdmin(): Promise<Tour[]> {
+  "use cache";
+  cacheLife("hours");
+  cacheTag("tours");
 
-      if (error) throw queryError("tour", error.message);
-      return data ? toTour(data) : undefined;
-    },
-    () => seedTours.find((tour) => tour.slug === slug),
-  );
+  const [base, overrides] = await Promise.all([baseTours(), readOverrides()]);
+  return applyTourEdits(base, overrides);
 }
 
 /**
