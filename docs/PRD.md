@@ -469,7 +469,7 @@ a coordination layer, not a tour operator.
 | See every inquiry and change its status | — | ✓ |
 | List accounts, see role and join date | — | ✓ |
 | View inquiry reports (status mix, demand by package) | — | ✓ |
-| Publish advisories, manage packages (Phase 3) | — | planned |
+| Publish advisories, manage packages | — | ✓ |
 
 Self-registration always writes `role = 'visitor'`; staff accounts are provisioned by the park
 office. Enforcement is layered: the route guard in `components/admin/admin-shell.tsx` redirects
@@ -525,12 +525,21 @@ evidence base for the volume assumptions in the revenue model (§6).
 | Site-wide advisory banner (FR-4.2) | `components/site-banner.tsx`, `lib/advisories.ts` | Implemented |
 | Newsletter digest sender (FR-6.3) | `lib/notifications.ts` | Transport ready; audience needs Supabase Auth |
 | Security headers & input cleaning | `next.config.ts`, `lib/sanitize.ts` | Implemented |
-| WCAG 2.1 AA notes | `docs/accessibility.md` | Static pass done; automated audit pending |
+| WCAG 2.1 AA notes | `docs/accessibility.md` | Static pass and Lighthouse 13.6 audit recorded (2026-11-12) |
 | Manage users & roles | `/admin/users` | List and counters implemented; editing planned |
 | Triage inquiries | `/admin/inquiries` | Implemented |
 | View reports | `/admin/inquiries` | Implemented |
-| Publish advisories | `/admin/advisories` | Planned |
-| Manage tour packages | `/admin/tours` | Planned |
+| Publish, edit and archive advisories | `/admin/advisories`, `lib/content-store.ts` | Implemented |
+| Manage package rates and availability | `/admin/tours`, `lib/content-store.ts` | Implemented |
+| Panel overview (pending queue, module counts) | `/admin`, `components/admin/admin-overview.tsx` | Implemented |
+| Loading and error boundaries | `app/admin/loading.tsx`, `app/admin/error.tsx` | Implemented |
+
+Content written from the panel (new notices, edited notices, rate and capacity
+changes, anything taken down) is stored in `.data/content.json` and merged over
+the base rows by `lib/content-store.ts`, so a publish reaches the public site
+without a database. The file is gitignored: a fresh checkout starts from the
+seed rows and from `supabase/schema.sql`. Pointing the same server actions at
+the `advisories` and `tours` tables is a change to that one module.
 
 Authentication currently runs against a local account store (`lib/auth.ts`, salted SHA-256
 digests, `localStorage` session) so the system can be demonstrated without a live Supabase
