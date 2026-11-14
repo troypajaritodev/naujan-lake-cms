@@ -26,7 +26,9 @@ do $$ begin create type public.user_role as enum ('admin', 'visitor'); exception
 do $$ begin create type public.conservation_status as enum ('CR', 'EN', 'VU', 'NT', 'LC', 'DD'); exception when duplicate_object then null; end $$;
 do $$ begin create type public.seasonality as enum ('RESIDENT', 'MIGRATORY', 'SEASONAL'); exception when duplicate_object then null; end $$;
 do $$ begin create type public.tour_difficulty as enum ('EASY', 'MODERATE', 'CHALLENGING'); exception when duplicate_object then null; end $$;
-do $$ begin create type public.inquiry_status as enum ('PENDING', 'CONTACTED', 'CONFIRMED', 'DECLINED'); exception when duplicate_object then null; end $$;
+do $$ begin create type public.inquiry_status as enum ('PENDING', 'CONTACTED', 'CONFIRMED', 'DECLINED', 'CANCELLED'); exception when duplicate_object then null; end $$;
+-- Existing databases pick up the new terminal state without a rebuild.
+do $$ begin alter type public.inquiry_status add value 'CANCELLED'; exception when duplicate_object then null; end $$;
 do $$ begin create type public.advisory_severity as enum ('CRITICAL', 'WARNING', 'INFO'); exception when duplicate_object then null; end $$;
 do $$ begin create type public.subscriber_status as enum ('ACTIVE', 'UNSUBSCRIBED'); exception when duplicate_object then null; end $$;
 
@@ -127,6 +129,9 @@ create table if not exists public.tour_inquiries (
   party_size     integer not null check (party_size between 1 and 60),
   notes          text,
   status         public.inquiry_status not null default 'PENDING',
+  confirmed_at   timestamptz,
+  cancelled_at   timestamptz,
+  decided_by     text check (decided_by in ('visitor', 'park')),
   created_at     timestamptz not null default now(),
   updated_at     timestamptz not null default now(),
   constraint tour_inquiries_email_format

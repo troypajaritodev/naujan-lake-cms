@@ -22,7 +22,12 @@ export type UserRole = "admin" | "visitor";
 export type ConservationStatus = "CR" | "EN" | "VU" | "NT" | "LC" | "DD";
 export type Seasonality = "RESIDENT" | "MIGRATORY" | "SEASONAL";
 export type TourDifficulty = "EASY" | "MODERATE" | "CHALLENGING";
-export type InquiryStatus = "PENDING" | "CONTACTED" | "CONFIRMED" | "DECLINED";
+export type InquiryStatus =
+  | "PENDING"
+  | "CONTACTED"
+  | "CONFIRMED"
+  | "DECLINED"
+  | "CANCELLED";
 export type AdvisorySeverity = "CRITICAL" | "WARNING" | "INFO";
 export type SubscriberStatus = "ACTIVE" | "UNSUBSCRIBED";
 
@@ -86,6 +91,9 @@ type TourInquiryRow = {
   party_size: number;
   notes: string | null;
   status: InquiryStatus;
+  confirmed_at: string | null;
+  cancelled_at: string | null;
+  decided_by: "visitor" | "park" | null;
   created_at: string;
   updated_at: string;
 };

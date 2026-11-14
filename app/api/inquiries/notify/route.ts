@@ -4,8 +4,7 @@ import {
   inquiryConfirmationEmail,
   inquiryNotificationEmail,
 } from "@/lib/email-templates";
-import type { Inquiry } from "@/lib/inquiries";
-import { cleanEmail, cleanPhone, cleanText } from "@/lib/sanitize";
+import { parseInquiryPayload } from "@/lib/inquiry-payload";
 
 /**
  * Sends the two inquiry emails (FR-2.3). The inquiry itself is stored by the
@@ -37,10 +36,6 @@ function isRateLimited(key: string): boolean {
   return hits.length > MAX_PER_WINDOW;
 }
 
-function asString(value: unknown, maxLength: number): string {
-  return typeof value === "string" ? cleanText(value, maxLength) : "";
-}
-
 export async function POST(request: Request) {
   const clientKey =
     request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "local";
@@ -56,42 +51,13 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Expected JSON." }, { status: 400 });
   }
 
-  const email = cleanEmail(asString(payload.email, 254));
-  const reference = asString(payload.reference, 32);
-  const tourTitle = asString(payload.tourTitle, 160);
-  const preferredDate = asString(payload.preferredDate, 10);
-  const partySize = Number(payload.partySize);
-
-  if (
-    !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email) ||
-    !reference ||
-    !tourTitle ||
-    !/^\d{4}-\d{2}-\d{2}$/.test(preferredDate) ||
-    !Number.isInteger(partySize) ||
-    partySize < 1 ||
-    partySize > 60
-  ) {
+  const inquiry = parseInquiryPayload(payload);
+  if (!inquiry) {
     return NextResponse.json(
       { error: "Incomplete inquiry." },
       { status: 400 },
     );
   }
-
-  const inquiry: Inquiry = {
-    id: asString(payload.id, 64) || reference,
-    reference,
-    userEmail: cleanEmail(asString(payload.userEmail, 254)) || email,
-    fullName: asString(payload.fullName, 120) || "Visitor",
-    email,
-    phone: cleanPhone(asString(payload.phone, 32)),
-    tourSlug: asString(payload.tourSlug, 120),
-    tourTitle,
-    preferredDate,
-    partySize,
-    message: asString(payload.message, 2000),
-    status: "PENDING",
-    createdAt: asString(payload.createdAt, 40) || new Date().toISOString(),
-  };
 
   const [confirmation, notification] = await Promise.all([
     sendEmail(inquiryConfirmationEmail(inquiry)),

@@ -22,7 +22,11 @@ export type InquiryStatus =
   | "PENDING"
   | "CONTACTED"
   | "CONFIRMED"
-  | "DECLINED";
+  | "DECLINED"
+  | "CANCELLED";
+
+/** Who last moved an inquiry — the park through the queue, or the visitor. */
+export type InquiryActor = "visitor" | "park";
 
 export type Inquiry = {
   id: string;
@@ -38,7 +42,42 @@ export type Inquiry = {
   message: string;
   status: InquiryStatus;
   createdAt: string;
+  /** When the status last changed. */
+  updatedAt?: string;
+  /** When the park accepted the booking — cleared if the status moves on. */
+  confirmedAt?: string;
+  /** When the request was withdrawn. */
+  cancelledAt?: string;
+  /** Who made the latest change, so the guest can tell park from self. */
+  decidedBy?: InquiryActor;
 };
+
+/** Thrown for guard failures the UI should phrase to a person, not a dev. */
+export class InquiryError extends Error {}
+
+/**
+ * A request stays withdrawable while there is still something to withdraw.
+ * `DECLINED` and `CANCELLED` are terminal: the park already turned it down,
+ * or it has already been cancelled.
+ */
+export const CANCELLABLE_STATUSES: readonly InquiryStatus[] = [
+  "PENDING",
+  "CONTACTED",
+  "CONFIRMED",
+];
+
+export function canCancelInquiry(
+  inquiry: Pick<Inquiry, "status">,
+): boolean {
+  return CANCELLABLE_STATUSES.includes(inquiry.status);
+}
+
+/** True once the request has left the queue for good or for bad. */
+export function isDecidedStatus(status: InquiryStatus): boolean {
+  return (
+    status === "CONFIRMED" || status === "DECLINED" || status === "CANCELLED"
+  );
+}
 
 export const INQUIRIES_KEY = "nl.inquiries.v1";
 
@@ -76,6 +115,9 @@ const SEED_INQUIRIES: Inquiry[] = [
     message: "Two of us have binoculars already.",
     status: "CONFIRMED",
     createdAt: "2026-11-02T07:40:00.000Z",
+    updatedAt: "2026-11-03T02:10:00.000Z",
+    confirmedAt: "2026-11-03T02:10:00.000Z",
+    decidedBy: "park",
   },
   {
     id: "inq_seed_3",
@@ -91,6 +133,9 @@ const SEED_INQUIRIES: Inquiry[] = [
     message: "",
     status: "CONFIRMED",
     createdAt: "2026-10-18T15:05:00.000Z",
+    updatedAt: "2026-10-19T08:22:00.000Z",
+    confirmedAt: "2026-10-19T08:22:00.000Z",
+    decidedBy: "park",
   },
   {
     id: "inq_seed_4",
@@ -136,13 +181,29 @@ function writeInquiries(inquiries: Inquiry[]) {
 
 const EMPTY: Inquiry[] = [];
 const listeners = new Set<() => void>();
+let storageBound = false;
 
 function emit() {
   for (const listener of listeners) listener();
 }
 
+/**
+ * One `storage` listener for the module, so an acceptance made in the staff
+ * tab reaches an account page already open in another tab. The event only
+ * fires in *other* documents; this tab's own writes notify through `emit()`.
+ */
+function bindStorage() {
+  if (storageBound || typeof window === "undefined") return;
+  storageBound = true;
+
+  window.addEventListener("storage", (event) => {
+    if (event.key === INQUIRIES_KEY) emit();
+  });
+}
+
 /** Subscribe to inquiry changes (new submission or a status edit). */
 export function subscribeInquiries(listener: () => void): () => void {
+  bindStorage();
   listeners.add(listener);
   return () => listeners.delete(listener);
 }
@@ -203,18 +264,84 @@ export async function getAllInquiries(): Promise<Inquiry[]> {
   return readInquiries().sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
 
+/**
+ * Stamp a status change. Decision timestamps track the *current* status only:
+ * re-queuing a booking clears the stamps so the account page never claims a
+ * withdrawn request is still confirmed.
+ */
+function stamp(
+  inquiry: Inquiry,
+  status: InquiryStatus,
+  at: string,
+  actor: InquiryActor,
+): Inquiry {
+  const next: Inquiry = { ...inquiry, status, updatedAt: at, decidedBy: actor };
+
+  if (status === "CONFIRMED") {
+    next.confirmedAt = at;
+    delete next.cancelledAt;
+  } else if (status === "CANCELLED") {
+    next.cancelledAt = at;
+    delete next.confirmedAt;
+  } else {
+    delete next.confirmedAt;
+    delete next.cancelledAt;
+  }
+
+  return next;
+}
+
 export async function setInquiryStatus(
   id: string,
   status: InquiryStatus,
+  options?: { actor?: InquiryActor },
 ): Promise<Inquiry[]> {
+  const at = new Date().toISOString();
+  const actor: InquiryActor = options?.actor ?? "park";
+
   const next = readInquiries().map((inquiry) =>
-    inquiry.id === id ? { ...inquiry, status } : inquiry,
+    inquiry.id === id ? stamp(inquiry, status, at, actor) : inquiry,
   );
 
   writeInquiries(next);
   emit();
 
   return next.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+}
+
+/**
+ * Withdraw a booking request on the visitor's own account. Ownership is
+ * checked against the email the request was filed under, and only while the
+ * status is still cancellable — a confirmed booking can be withdrawn (the
+ * park is emailed so the boat is freed), a declined or cancelled one cannot.
+ */
+export async function cancelInquiry(
+  id: string,
+  userEmail: string,
+): Promise<Inquiry> {
+  const normalized = userEmail.trim().toLowerCase();
+  const list = readInquiries();
+  const inquiry = list.find((entry) => entry.id === id);
+
+  if (!inquiry) {
+    throw new InquiryError("We could not find that request.");
+  }
+  if (inquiry.userEmail !== normalized) {
+    throw new InquiryError(
+      "Only the visitor who made this request can withdraw it.",
+    );
+  }
+  if (!canCancelInquiry(inquiry)) {
+    throw new InquiryError("This request can no longer be withdrawn.");
+  }
+
+  const cancelled = stamp(inquiry, "CANCELLED", new Date().toISOString(), "visitor");
+  const next = list.map((entry) => (entry.id === id ? cancelled : entry));
+
+  writeInquiries(next);
+  emit();
+
+  return cancelled;
 }
 
 export async function getInquiriesFor(email: string): Promise<Inquiry[]> {

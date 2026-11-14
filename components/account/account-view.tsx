@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   AlertCircle,
   ArrowRight,
+  Ban,
   Check,
   Loader2,
   LogOut,
@@ -15,7 +16,14 @@ import {
 import { AuthField } from "@/components/auth-shell";
 import { useAuth } from "@/components/auth-provider";
 import { AuthError, type SessionUser } from "@/lib/auth";
-import { getInquiriesFor, type Inquiry } from "@/lib/inquiries";
+import {
+  canCancelInquiry,
+  cancelInquiry,
+  InquiryError,
+  useInquiries,
+  type Inquiry,
+} from "@/lib/inquiries";
+import { INQUIRY_STATUS_META } from "@/lib/inquiry-status";
 
 const dateFormat = new Intl.DateTimeFormat("en-PH", {
   day: "numeric",
@@ -26,6 +34,41 @@ const dateFormat = new Intl.DateTimeFormat("en-PH", {
 function formatDate(iso: string) {
   const parsed = new Date(iso);
   return Number.isNaN(parsed.getTime()) ? "—" : dateFormat.format(parsed);
+}
+
+/** One plain sentence per status, so the account page never needs a legend. */
+function statusSummary(inquiry: Inquiry): string {
+  const at =
+    inquiry.status === "CONFIRMED"
+      ? inquiry.confirmedAt
+      : inquiry.status === "CANCELLED"
+        ? inquiry.cancelledAt
+        : inquiry.updatedAt;
+  const when = at ? formatDate(at) : null;
+
+  switch (inquiry.status) {
+    case "CONFIRMED":
+      return when
+        ? `Confirmed by the park on ${when}. Bring reference ${inquiry.reference} to the jetty.`
+        : `Confirmed by the park. Bring reference ${inquiry.reference} to the jetty.`;
+    case "DECLINED":
+      return when
+        ? `The park office could not accommodate this request (${when}). Send another date or package.`
+        : "The park office could not accommodate this request. Send another date or package.";
+    case "CANCELLED":
+      if (inquiry.decidedBy === "visitor") {
+        return when
+          ? `You cancelled this request on ${when}.`
+          : "You cancelled this request.";
+      }
+      return when
+        ? `The park office cancelled this request on ${when}.`
+        : "The park office cancelled this request.";
+    case "CONTACTED":
+      return "The park office has replied — check your email for the details.";
+    default:
+      return "Waiting on the park office, usually within two working days.";
+  }
 }
 
 export default function AccountView() {
@@ -71,19 +114,49 @@ function AccountDashboard({ user }: { user: SessionUser }) {
   const [passwordStatus, setPasswordStatus] = useState<"idle" | "saved">("idle");
   const [passwordPending, setPasswordPending] = useState(false);
 
-  const [inquiries, setInquiries] = useState<Inquiry[]>([]);
+  const allInquiries = useInquiries();
+  const inquiries = useMemo(
+    () =>
+      allInquiries.filter(
+        (inquiry) => inquiry.userEmail === user.email.trim().toLowerCase(),
+      ),
+    [allInquiries, user.email],
+  );
 
-  useEffect(() => {
-    let active = true;
+  const [confirmId, setConfirmId] = useState<string | null>(null);
+  const [cancellingId, setCancellingId] = useState<string | null>(null);
+  const [cancelError, setCancelError] = useState<string | null>(null);
 
-    getInquiriesFor(user.email).then((list) => {
-      if (active) setInquiries(list);
-    });
+  async function withdraw(inquiry: Inquiry) {
+    setCancellingId(inquiry.id);
+    setCancelError(null);
 
-    return () => {
-      active = false;
-    };
-  }, [user.email]);
+    try {
+      const cancelled = await cancelInquiry(inquiry.id, user.email);
+      setConfirmId(null);
+
+      // Tell the park the slot is free. The withdrawal is already saved, so
+      // this stays best-effort and the account page never waits on it.
+      void fetch("/api/inquiries/status", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...cancelled,
+          status: "CANCELLED",
+          actor: "visitor",
+        }),
+        keepalive: true,
+      }).catch(() => {});
+    } catch (error) {
+      setCancelError(
+        error instanceof InquiryError
+          ? error.message
+          : "Could not cancel this request.",
+      );
+    } finally {
+      setCancellingId(null);
+    }
+  }
 
   function saveProfile(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -339,18 +412,115 @@ function AccountDashboard({ user }: { user: SessionUser }) {
                   pre-filled with your details.
                 </p>
               ) : (
-                <ul className="mt-3 divide-y divide-ink/8">
-                  {inquiries.slice(0, 4).map((inquiry) => (
-                    <li key={inquiry.id} className="py-3 first:pt-0 last:pb-0">
-                      <p className="text-[13.5px] font-medium text-ink">
-                        {inquiry.tourTitle}
-                      </p>
-                      <p className="mt-0.5 font-mono text-[11.5px] text-sand-600">
-                        {inquiry.reference} · {formatDate(inquiry.preferredDate)}
-                      </p>
-                    </li>
-                  ))}
-                </ul>
+                <>
+                  <ul className="mt-4 divide-y divide-ink/8">
+                    {inquiries.map((inquiry) => {
+                      const meta = INQUIRY_STATUS_META[inquiry.status];
+                      const confirming = confirmId === inquiry.id;
+                      const cancelling = cancellingId === inquiry.id;
+
+                      return (
+                        <li key={inquiry.id} className="py-4 first:pt-0 last:pb-0">
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <p className="text-[13.5px] font-medium text-ink">
+                                {inquiry.tourTitle}
+                              </p>
+                              <p className="mt-0.5 font-mono text-[11.5px] text-sand-600">
+                                {inquiry.reference} ·{" "}
+                                {formatDate(inquiry.preferredDate)}
+                              </p>
+                              <p className="mt-0.5 text-[11.5px] text-ink-soft/60">
+                                {inquiry.partySize}{" "}
+                                {inquiry.partySize === 1 ? "guest" : "guests"}
+                              </p>
+                            </div>
+                            <span
+                              className={`shrink-0 rounded-full px-2 py-0.5 text-[9.5px] font-semibold tracking-[0.1em] uppercase ring-1 ring-inset ${meta.chip}`}
+                            >
+                              {meta.label}
+                            </span>
+                          </div>
+
+                          <p className="mt-2 text-[11.5px] leading-relaxed text-ink-soft/65">
+                            {statusSummary(inquiry)}
+                          </p>
+
+                          {canCancelInquiry(inquiry) &&
+                            (confirming ? (
+                              <div
+                                role="group"
+                                aria-label={`Cancel ${inquiry.reference}`}
+                                className="mt-2.5 rounded-xl bg-sand-50 p-2.5 ring-1 ring-ink/8"
+                              >
+                                <p className="text-[11.5px] leading-relaxed text-ink-soft/80">
+                                  Cancel this request? The park office is told
+                                  right away.
+                                </p>
+                                <div className="mt-2 flex flex-wrap gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => void withdraw(inquiry)}
+                                    disabled={cancelling}
+                                    className="inline-flex items-center gap-1.5 rounded-full bg-alert-600 px-3 py-1.5 text-[11.5px] font-semibold text-white transition-colors hover:bg-alert-700 disabled:cursor-wait disabled:opacity-60"
+                                  >
+                                    {cancelling && (
+                                      <Loader2
+                                        className="size-3.5 animate-spin"
+                                        strokeWidth={2}
+                                      />
+                                    )}
+                                    Yes, cancel it
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setConfirmId(null);
+                                      setCancelError(null);
+                                    }}
+                                    disabled={cancelling}
+                                    className="inline-flex items-center rounded-full border border-ink/15 px-3 py-1.5 text-[11.5px] font-semibold text-ink transition-colors hover:bg-white disabled:opacity-60"
+                                  >
+                                    Keep it
+                                  </button>
+                                </div>
+
+                                {cancelError && (
+                                  <p
+                                    role="alert"
+                                    className="mt-2 flex items-start gap-1.5 text-[11.5px] text-alert-600"
+                                  >
+                                    <AlertCircle
+                                      className="mt-0.5 size-3.5 shrink-0"
+                                      strokeWidth={2}
+                                    />
+                                    {cancelError}
+                                  </p>
+                                )}
+                              </div>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setConfirmId(inquiry.id);
+                                  setCancelError(null);
+                                }}
+                                className="mt-2 inline-flex items-center gap-1.5 text-[11.5px] font-semibold text-alert-600 transition-colors hover:text-alert-700"
+                              >
+                                <Ban className="size-3.5" strokeWidth={2} />
+                                Cancel request
+                              </button>
+                            ))}
+                        </li>
+                      );
+                    })}
+                  </ul>
+
+                  <p className="mt-4 text-[11px] leading-relaxed text-ink-soft/55">
+                    Pending, contacted and confirmed requests can be withdrawn
+                    here — the park office is told immediately.
+                  </p>
+                </>
               )}
 
               <Link

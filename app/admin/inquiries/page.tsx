@@ -1,51 +1,23 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { BellRing, Check, Inbox } from "lucide-react";
+import { AlertCircle, BellRing, Check, Inbox } from "lucide-react";
 import StatCard from "@/components/admin/stat-card";
 import {
   setInquiryStatus,
   useInquiries,
+  type Inquiry,
   type InquiryStatus,
 } from "@/lib/inquiries";
+import {
+  INQUIRY_STATUS_META,
+  INQUIRY_STATUS_ORDER,
+} from "@/lib/inquiry-status";
 import {
   bookingCountLabel,
   markInquiriesSeen,
   useInquiryAlerts,
 } from "@/lib/inquiry-alerts";
-
-const STATUSES: InquiryStatus[] = [
-  "PENDING",
-  "CONTACTED",
-  "CONFIRMED",
-  "DECLINED",
-];
-
-const statusMeta: Record<
-  InquiryStatus,
-  { label: string; bar: string; chip: string }
-> = {
-  PENDING: {
-    label: "Pending",
-    bar: "bg-reed-400",
-    chip: "bg-reed-50 text-reed-800 ring-reed-600/25",
-  },
-  CONTACTED: {
-    label: "Contacted",
-    bar: "bg-lake-400",
-    chip: "bg-lake-50 text-lake-700 ring-lake-600/25",
-  },
-  CONFIRMED: {
-    label: "Confirmed",
-    bar: "bg-moss-500",
-    chip: "bg-moss-50 text-moss-700 ring-moss-600/25",
-  },
-  DECLINED: {
-    label: "Declined",
-    bar: "bg-alert-500",
-    chip: "bg-alert-50 text-alert-700 ring-alert-500/25",
-  },
-};
 
 const dateFormat = new Intl.DateTimeFormat("en-PH", {
   day: "numeric",
@@ -56,6 +28,92 @@ const dateFormat = new Intl.DateTimeFormat("en-PH", {
 function formatDay(iso: string) {
   const parsed = new Date(`${iso}T00:00:00`);
   return Number.isNaN(parsed.getTime()) ? "—" : dateFormat.format(parsed);
+}
+
+function formatStamp(iso?: string) {
+  if (!iso) return null;
+  const parsed = new Date(iso);
+  return Number.isNaN(parsed.getTime()) ? null : dateFormat.format(parsed);
+}
+
+/** The line under the status chip: what happened, and when. */
+function statusDetail(inquiry: Inquiry) {
+  const at = formatStamp(inquiry.updatedAt);
+
+  switch (inquiry.status) {
+    case "CONFIRMED":
+      return at ? `Accepted ${at}` : "Accepted by the park office";
+    case "DECLINED":
+      return at ? `Declined ${at}` : INQUIRY_STATUS_META.DECLINED.blurb;
+    case "CANCELLED":
+      if (inquiry.decidedBy === "visitor") {
+        return at ? `Withdrawn by visitor ${at}` : "Withdrawn by the visitor";
+      }
+      return at ? `Cancelled by park ${at}` : "Cancelled by the park office";
+    case "CONTACTED":
+      return at ? `Contacted ${at}` : INQUIRY_STATUS_META.CONTACTED.blurb;
+    default:
+      return INQUIRY_STATUS_META.PENDING.blurb;
+  }
+}
+
+type EmailOutcome = { delivered: boolean; reason?: string };
+
+/** Best-effort: the local status write already succeeded before this is called. */
+async function sendStatusEmail(
+  inquiry: Inquiry,
+  status: InquiryStatus,
+  actor: "park" | "visitor",
+): Promise<EmailOutcome | null> {
+  try {
+    const response = await fetch("/api/inquiries/status", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...inquiry, status, actor }),
+    });
+    if (!response.ok) return null;
+
+    const data = (await response.json()) as { email?: EmailOutcome };
+    return data.email ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function emailFeedback(
+  status: InquiryStatus,
+  email: string,
+  outcome: EmailOutcome | null,
+) {
+  const noun =
+    status === "CONFIRMED"
+      ? "Booking confirmation"
+      : status === "DECLINED"
+        ? "Decline notice"
+        : "Cancellation notice";
+
+  if (!outcome) {
+    return {
+      tone: "warn" as const,
+      text: `${INQUIRY_STATUS_META[status].label} saved, but the email could not be sent.`,
+    };
+  }
+
+  if (outcome.delivered) {
+    return { tone: "ok" as const, text: `${noun} emailed to ${email}.` };
+  }
+
+  if (outcome.reason === "demo") {
+    return {
+      tone: "ok" as const,
+      text: `${noun} printed to the server console (demo mode).`,
+    };
+  }
+
+  return {
+    tone: "warn" as const,
+    text: `${INQUIRY_STATUS_META[status].label} saved, but the email could not be sent.`,
+  };
 }
 
 const relativeFormat = new Intl.RelativeTimeFormat("en", { numeric: "auto" });
@@ -86,23 +144,45 @@ export default function AdminInquiriesPage() {
   const inquiries = useInquiries();
   const { unread, unreadIds, latestUnread } = useInquiryAlerts();
   const [pendingId, setPendingId] = useState<string | null>(null);
+  const [feedback, setFeedback] = useState<{
+    tone: "ok" | "warn";
+    text: string;
+  } | null>(null);
 
-  async function changeStatus(id: string, status: InquiryStatus) {
-    setPendingId(id);
+  async function changeStatus(inquiry: Inquiry, status: InquiryStatus) {
+    if (inquiry.status === status) return;
+
+    setPendingId(inquiry.id);
+    setFeedback(null);
     try {
-      await setInquiryStatus(id, status);
+      const next = await setInquiryStatus(inquiry.id, status);
+      const updated = next.find((entry) => entry.id === inquiry.id) ?? inquiry;
+
+      // Accepting, declining or cancelling has an email half. The status is
+      // already saved, so a failed send is reported but never rolled back.
+      if (status === "CONFIRMED" || status === "DECLINED" || status === "CANCELLED") {
+        const outcome = await sendStatusEmail(updated, status, "park");
+        setFeedback(emailFeedback(status, inquiry.email, outcome));
+      } else {
+        setFeedback({
+          tone: "ok",
+          text: `${inquiry.reference} is now ${INQUIRY_STATUS_META[status].label.toLowerCase()}.`,
+        });
+      }
+    } catch {
+      setFeedback({
+        tone: "warn",
+        text: `Could not update ${inquiry.reference}. Try again.`,
+      });
     } finally {
       setPendingId(null);
     }
   }
 
   const stats = useMemo(() => {
-    const counts: Record<InquiryStatus, number> = {
-      PENDING: 0,
-      CONTACTED: 0,
-      CONFIRMED: 0,
-      DECLINED: 0,
-    };
+    const counts = Object.fromEntries(
+      INQUIRY_STATUS_ORDER.map((status) => [status, 0]),
+    ) as Record<InquiryStatus, number>;
 
     for (const inquiry of inquiries) counts[inquiry.status] += 1;
 
@@ -194,7 +274,25 @@ export default function AdminInquiriesPage() {
         </section>
       )}
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      {feedback && (
+        <p
+          role="status"
+          className={`flex items-start gap-2 rounded-xl px-4 py-3 text-[12.5px] ring-1 ring-inset ${
+            feedback.tone === "ok"
+              ? "bg-moss-50 text-moss-800 ring-moss-600/20"
+              : "bg-alert-50 text-alert-700 ring-alert-500/20"
+          }`}
+        >
+          {feedback.tone === "ok" ? (
+            <Check className="mt-0.5 size-4 shrink-0" strokeWidth={2.4} aria-hidden="true" />
+          ) : (
+            <AlertCircle className="mt-0.5 size-4 shrink-0" strokeWidth={2} aria-hidden="true" />
+          )}
+          {feedback.text}
+        </p>
+      )}
+
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
         <StatCard
           label="All inquiries"
           value={stats.total}
@@ -219,6 +317,12 @@ export default function AdminInquiriesPage() {
           hint="Could not be accommodated"
           tone="alert"
         />
+        <StatCard
+          label="Cancelled"
+          value={stats.counts.CANCELLED}
+          hint="Withdrawn by visitors"
+          tone="ink"
+        />
       </div>
 
       <div className="grid gap-4 lg:grid-cols-12">
@@ -232,7 +336,7 @@ export default function AdminInquiriesPage() {
           </p>
 
           <ul className="mt-5 space-y-4">
-            {STATUSES.map((status) => {
+            {INQUIRY_STATUS_ORDER.map((status) => {
               const count = stats.counts[status];
               const percent = stats.total
                 ? Math.round((count / stats.total) * 100)
@@ -242,7 +346,7 @@ export default function AdminInquiriesPage() {
                 <li key={status}>
                   <div className="flex items-baseline justify-between gap-3">
                     <p className="text-[12.5px] font-medium text-ink">
-                      {statusMeta[status].label}
+                      {INQUIRY_STATUS_META[status].label}
                     </p>
                     <p className="font-mono text-[11.5px] text-ink-soft/70">
                       {count} · {percent}%
@@ -253,7 +357,7 @@ export default function AdminInquiriesPage() {
                     role="presentation"
                   >
                     <div
-                      className={`h-full rounded-full ${statusMeta[status].bar}`}
+                      className={`h-full rounded-full ${INQUIRY_STATUS_META[status].bar}`}
                       style={{ width: `${percent}%` }}
                     />
                   </div>
@@ -324,7 +428,7 @@ export default function AdminInquiriesPage() {
               )}
             </h2>
             <p className="mt-0.5 text-[12.5px] text-ink-soft/65">
-              Newest first · change a status to update the report
+              Newest first · accepting or declining emails the guest
             </p>
           </div>
         </div>
@@ -402,20 +506,23 @@ export default function AdminInquiriesPage() {
                       value={inquiry.status}
                       onChange={(event) => {
                         void changeStatus(
-                          inquiry.id,
+                          inquiry,
                           event.target.value as InquiryStatus,
                         );
                       }}
                       disabled={pendingId === inquiry.id}
                       aria-label={`Status for ${inquiry.reference}`}
-                      className={`cursor-pointer rounded-full border-0 px-2.5 py-1 text-[10.5px] font-semibold tracking-[0.1em] uppercase ring-1 ring-inset outline-none disabled:cursor-wait disabled:opacity-60 ${statusMeta[inquiry.status].chip}`}
+                      className={`cursor-pointer rounded-full border-0 px-2.5 py-1 text-[10.5px] font-semibold tracking-[0.1em] uppercase ring-1 ring-inset outline-none disabled:cursor-wait disabled:opacity-60 ${INQUIRY_STATUS_META[inquiry.status].chip}`}
                     >
-                      {STATUSES.map((status) => (
+                      {INQUIRY_STATUS_ORDER.map((status) => (
                         <option key={status} value={status}>
-                          {statusMeta[status].label}
+                          {INQUIRY_STATUS_META[status].label}
                         </option>
                       ))}
                     </select>
+                    <p className="mt-1.5 text-[10.5px] text-ink-soft/55">
+                      {statusDetail(inquiry)}
+                    </p>
                   </td>
                 </tr>
                 );

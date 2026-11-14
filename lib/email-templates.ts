@@ -77,6 +77,97 @@ export function inquiryNotificationEmail(inquiry: Inquiry): EmailMessage {
   };
 }
 
+/**
+ * Sent to the visitor when the park accepts the request. This is the "yes"
+ * that turns an inquiry into a booking, so it repeats the reference, date and
+ * party size they need at the jetty.
+ */
+export function inquiryConfirmedEmail(inquiry: Inquiry): EmailMessage {
+  return {
+    to: inquiry.email,
+    subject: `Booking confirmed · ${inquiry.reference}`,
+    replyTo: PARK_INBOX,
+    text: [
+      `Hello ${firstName(inquiry.fullName)},`,
+      "",
+      `Good news — the park office has confirmed your booking for ${inquiry.tourTitle} on ${inquiry.preferredDate} for ${inquiry.partySize} guest${inquiry.partySize === 1 ? "" : "s"}.`,
+      "",
+      ...inquiryFacts(inquiry),
+      "",
+      "Please arrive at the jump-off point 15 minutes before departure and bring this reference.",
+      "Nothing is paid online — the tariff is settled at the jetty on the day.",
+      "",
+      `If your plans change, withdraw the request from your account: ${SITE_URL}/account`,
+      "",
+      PARK_NAME,
+      `${SITE_URL}/tours`,
+    ].join("\n"),
+  };
+}
+
+/** Sent when the park cannot accommodate the requested date or party size. */
+export function inquiryDeclinedEmail(inquiry: Inquiry): EmailMessage {
+  return {
+    to: inquiry.email,
+    subject: `Update on your inquiry · ${inquiry.reference}`,
+    replyTo: PARK_INBOX,
+    text: [
+      `Hello ${firstName(inquiry.fullName)},`,
+      "",
+      `The park office could not accommodate ${inquiry.tourTitle} on ${inquiry.preferredDate} for ${inquiry.partySize} guest${inquiry.partySize === 1 ? "" : "s"}.`,
+      "",
+      ...inquiryFacts(inquiry),
+      "",
+      "No payment has been taken. Reply to this message to ask about another date, or send a fresh request:",
+      `${SITE_URL}/inquire`,
+      "",
+      PARK_NAME,
+      `${SITE_URL}/tours`,
+    ].join("\n"),
+  };
+}
+
+/** Tells the visitor the park has cancelled a request it had on file. */
+export function inquiryCancelledEmail(inquiry: Inquiry): EmailMessage {
+  return {
+    to: inquiry.email,
+    subject: `Inquiry cancelled · ${inquiry.reference}`,
+    replyTo: PARK_INBOX,
+    text: [
+      `Hello ${firstName(inquiry.fullName)},`,
+      "",
+      `The park office has cancelled the request for ${inquiry.tourTitle} on ${inquiry.preferredDate}.`,
+      "",
+      ...inquiryFacts(inquiry),
+      "",
+      "If this is unexpected, reply to this message and the staff will pick it up.",
+      `You can send a new request here: ${SITE_URL}/inquire`,
+      "",
+      PARK_NAME,
+      `${SITE_URL}/tours`,
+    ].join("\n"),
+  };
+}
+
+/**
+ * Sent to the park office when a visitor withdraws their own request, so the
+ * boat and guide are freed without staff having to watch the account page.
+ */
+export function inquiryCancellationAlertEmail(inquiry: Inquiry): EmailMessage {
+  return {
+    to: PARK_INBOX,
+    replyTo: inquiry.email,
+    subject: `Inquiry withdrawn · ${inquiry.reference} · ${inquiry.tourTitle}`,
+    text: [
+      "The visitor withdrew this booking request.",
+      "",
+      ...inquiryFacts(inquiry),
+      "",
+      `The slot is free again. Open the queue: ${SITE_URL}/admin/inquiries`,
+    ].join("\n"),
+  };
+}
+
 /** One message per subscriber when a CRITICAL advisory is published (FR-6.3). */
 export function advisoryDigestEmail(
   to: string,

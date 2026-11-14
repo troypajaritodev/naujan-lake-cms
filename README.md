@@ -60,8 +60,8 @@ invalidate them with `revalidateTag` once it lands.
 
 ## Email
 
-Inquiry confirmations and staff alerts (FR-2.3) go through one transport in
-`lib/email.ts`:
+Inquiry confirmations, accept/decline notices and withdrawal alerts (FR-2.3)
+go through one transport in `lib/email.ts`:
 
 - With `RESEND_API_KEY` and `EMAIL_FROM` set, messages are sent through
   [Resend](https://resend.com) (plain text, 8 s timeout, never throws into the

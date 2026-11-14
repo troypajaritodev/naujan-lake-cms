@@ -178,6 +178,7 @@ To establish the definitive digital hub for Naujan Lake National Park that balan
   - Online inquiry submission (Full name, email, phone, date of visit, party size, package selected, special requests).
   - Generates a unique tracking reference code.
   - Sends immediate email confirmation to user and notification to the admin queue.
+  - Emails the visitor when the park accepts or declines the request; the visitor can withdraw a pending, contacted or confirmed request from their account, which alerts the park.
 
 ### Module 3: Park Rules, Regulations & Zoning
 - **FR-3.1 Conservation Guidelines:** Clear, visual display of core rules:
@@ -325,7 +326,9 @@ A `species_media` gallery table is planned for FR-1.2 but is intentionally outsi
 | `target_date` | DATE | NOT NULL | Intended visit date |
 | `party_size` | INTEGER | NOT NULL, 1–60 | Number of guests |
 | `notes` | TEXT | NULLABLE | Special requests |
-| `status` | `inquiry_status` | NOT NULL, DEFAULT `'PENDING'` | PENDING, CONTACTED, CONFIRMED, DECLINED |
+| `status` | `inquiry_status` | NOT NULL, DEFAULT `'PENDING'` | PENDING, CONTACTED, CONFIRMED, DECLINED, CANCELLED |
+| `confirmed_at` / `cancelled_at` | TIMESTAMPTZ | NULLABLE | When the park accepted, or when the request was withdrawn |
+| `decided_by` | TEXT | NULLABLE, `visitor` or `park` | Who made the latest status change |
 | `created_at` / `updated_at` | TIMESTAMPTZ | NOT NULL, DEFAULT `now()` | Timestamps |
 
 #### `advisories`
@@ -500,12 +503,19 @@ system requires a session (`«include»` UC-4 Sign in), writes a `tour_inquiries
 generated `NL-YYYY-NNNNNN` reference, and the request appears in the staff queue.
 
 **UC-8 · Triage inquiries** — staff open `/admin/inquiries`, review the queue newest-first and
-move a request through PENDING → CONTACTED → CONFIRMED / DECLINED. Every change immediately
-updates the status counters and the demand-by-package report above it.
+move a request through PENDING → CONTACTED → CONFIRMED / DECLINED. Accepting sends the visitor a
+booking-confirmation email; declining sends a notice instead. Withdrawals by the visitor land in
+the same queue marked CANCELLED, with a staff alert, so the boat and guide can be freed. Every
+change immediately updates the status counters and the demand-by-package report above it.
 
-**UC-9 · View reports** — the dashboard derives four KPIs (total, pending, confirmed, declined),
-a status distribution and a per-package demand table from the same inquiry set, which is the
-evidence base for the volume assumptions in the revenue model (§6).
+**UC-9 · View reports** — the dashboard derives KPIs (total, pending, confirmed, declined,
+cancelled), a status distribution and a per-package demand table from the same inquiry set, which
+is the evidence base for the volume assumptions in the revenue model (§6).
+
+**UC-10 · Withdraw a booking request** — the visitor opens `/account`, sees every request they
+filed with its live status, and can cancel a pending, contacted or confirmed booking. The request
+is stamped CANCELLED with `decided_by = visitor`, disappears from the park's pending work, and the
+park office receives an alert email. Declined and already-cancelled requests are terminal.
 
 ### 12.4 Implementation status
 
@@ -518,6 +528,8 @@ evidence base for the volume assumptions in the revenue model (§6).
 | Sign in | `/login` | Implemented |
 | Submit booking inquiry | `/inquire`, `lib/inquiries.ts` | Implemented |
 | Receive inquiry emails | `app/api/inquiries/notify`, `lib/email.ts` | Implemented (demo transport; set `RESEND_API_KEY` for live sending) |
+| Accept, decline or cancel a request | `app/api/inquiries/status`, `lib/email-templates.ts` | Implemented (emails the guest, or the park for a withdrawal) |
+| Withdraw a booking request | `/account`, `lib/inquiries.ts` | Implemented (pending, contacted and confirmed requests) |
 | Manage profile | `/account` | Implemented |
 | Search & filter the catalogue | `/wildlife?category=&status=&season=&q=` | Implemented |
 | Species record pages | `/wildlife/[slug]` | Implemented |
