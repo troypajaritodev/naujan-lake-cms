@@ -1,0 +1,139 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1120 760" role="img" aria-labelledby="title desc">
+  <title id="title">System Architecture Diagram - Naujan Lake CMS</title>
+  <desc id="desc">Layered architecture of the Next.js 16 application, server actions, storage layer, and external integrations.</desc>
+  <defs>
+    <style>
+      .bg { fill: #f7f4ec; }
+      .title { font: 600 22px "Georgia", serif; fill: #122629; }
+      .sub { font: 400 13px "Segoe UI", sans-serif; fill: #536466; }
+      .tier { fill: #ffffff; stroke: #d8d2c3; stroke-width: 1.5; }
+      .tier-lbl { font: 700 11px "Segoe UI", sans-serif; fill: #1e5f68; letter-spacing: 1.4px; }
+      .box-lake { fill: #103b42; stroke: #0a252a; stroke-width: 1.5; }
+      .box-light { fill: #f3f8f7; stroke: #2f7378; stroke-width: 1.5; }
+      .box-sand { fill: #fdfaf2; stroke: #b78d4a; stroke-width: 1.5; }
+      .box-ext { fill: #eef4f2; stroke: #2c6e58; stroke-width: 1.8; stroke-dasharray: 5 3; }
+      .b-title { font: 700 13px "Segoe UI", sans-serif; fill: #122629; text-anchor: middle; }
+      .b-title-w { font: 700 13px "Segoe UI", sans-serif; fill: #faf8f2; text-anchor: middle; }
+      .b-sub { font: 400 11px "Segoe UI", sans-serif; fill: #4a5b5d; text-anchor: middle; }
+      .b-sub-w { font: 400 11px "Segoe UI", sans-serif; fill: #cfe2df; text-anchor: middle; }
+      .conn { fill: none; stroke: #1e5f68; stroke-width: 1.7; marker-end: url(#arr); }
+    </style>
+    <marker id="arr" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto">
+      <path d="M 0 1.5 L 9 5 L 0 8.5 z" fill="#1e5f68" />
+    </marker>
+  </defs>
+
+  <rect class="bg" width="1120" height="760" rx="16" />
+  <text x="40" y="44" class="title">System Architecture Diagram — Naujan Lake CMS</text>
+  <text x="40" y="66" class="sub">Four-tier Next.js 16 full-stack architecture combining SSR Cache Components, Server Actions, Storage &amp; External APIs</text>
+
+  <!-- Tier 1: Presentation / Client Layer -->
+  <rect x="40" y="90" width="1040" height="130" rx="14" class="tier" />
+  <text x="60" y="114" class="tier-lbl">1. PRESENTATION LAYER (REACT 19 + TAILWIND CSS V4 · RESPONSIVE WEB PORTAL &amp; ADMIN UI)</text>
+
+  <rect x="60" y="128" width="235" height="76" rx="10" class="box-light" />
+  <text x="177" y="154" class="b-title">Public Portal Routes</text>
+  <text x="177" y="172" class="b-sub">/ · /wildlife · /tours</text>
+  <text x="177" y="188" class="b-sub">/advisories · /guidelines · /subscribe</text>
+
+  <rect x="315" y="128" width="235" height="76" rx="10" class="box-light" />
+  <text x="432" y="154" class="b-title">Visitor Account &amp; Pass</text>
+  <text x="432" y="172" class="b-sub">/inquire · /account · /verify</text>
+  <text x="432" y="188" class="b-sub">Tracker · Messenger · QR Pass</text>
+
+  <rect x="570" y="128" width="235" height="76" rx="10" class="box-lake" />
+  <text x="687" y="154" class="b-title-w">Admin CMS Console</text>
+  <text x="687" y="172" class="b-sub-w">/admin/inquiries · /users · /subscribers</text>
+  <text x="687" y="188" class="b-sub-w">/advisories · /tours · /species · /rules</text>
+
+  <rect x="825" y="128" width="235" height="76" rx="10" class="box-sand" />
+  <text x="942" y="154" class="b-title">Client Security &amp; State</text>
+  <text x="942" y="172" class="b-sub">AuthProvider · Role Guards</text>
+  <text x="942" y="188" class="b-sub">Salted SHA-256 · Sync Store</text>
+
+  <!-- Tier 2: Application / Next.js Server Layer -->
+  <rect x="40" y="255" width="1040" height="145" rx="14" class="tier" />
+  <text x="60" y="279" class="tier-lbl">2. APPLICATION &amp; API LAYER (NEXT.JS 16 APP ROUTER · SERVER ACTIONS · CACHE COMPONENTS)</text>
+
+  <rect x="60" y="294" width="235" height="90" rx="10" class="box-light" />
+  <text x="177" y="320" class="b-title">Cached Read Loaders</text>
+  <text x="177" y="338" class="b-sub">"use cache" + cacheTag()</text>
+  <text x="177" y="354" class="b-sub">lib/species.ts · lib/tours.ts</text>
+  <text x="177" y="370" class="b-sub">lib/advisories.ts · guidelines-data</text>
+
+  <rect x="315" y="294" width="235" height="90" rx="10" class="box-lake" />
+  <text x="432" y="320" class="b-title-w">CMS Server Actions</text>
+  <text x="432" y="338" class="b-sub-w">Input Sanitization + Validation</text>
+  <text x="432" y="354" class="b-sub-w">updateTag() Instant Revalidation</text>
+  <text x="432" y="370" class="b-sub-w">Advisories · Tours · Species · Rules</text>
+
+  <rect x="570" y="294" width="235" height="90" rx="10" class="box-light" />
+  <text x="687" y="320" class="b-title">REST Route Handlers</text>
+  <text x="687" y="338" class="b-sub">/api/inquiries/notify</text>
+  <text x="687" y="354" class="b-sub">/api/inquiries/status</text>
+  <text x="687" y="370" class="b-sub">/api/weather (Live Lake Telemetry)</text>
+
+  <rect x="825" y="294" width="235" height="90" rx="10" class="box-sand" />
+  <text x="942" y="320" class="b-title">Security &amp; Export Utilities</text>
+  <text x="942" y="338" class="b-sub">next.config.ts Security Headers</text>
+  <text x="942" y="354" class="b-sub">lib/sanitize.ts · lib/csv.ts</text>
+  <text x="942" y="370" class="b-sub">lib/qr.ts (QR Pass Encoder)</text>
+
+  <!-- Tier 3: Data Persistence Layer -->
+  <rect x="40" y="435" width="1040" height="125" rx="14" class="tier" />
+  <text x="60" y="459" class="tier-lbl">3. DATA &amp; PERSISTENCE LAYER (RELATIONAL DATABASE + ATOMIC OVERRIDE STORE + DEMO STORES)</text>
+
+  <rect x="60" y="474" width="320" height="70" rx="10" class="box-lake" />
+  <text x="220" y="498" class="b-title-w">Supabase PostgreSQL (7 Tables + RLS)</text>
+  <text x="220" y="516" class="b-sub-w">users · categories · species · tours</text>
+  <text x="220" y="532" class="b-sub-w">advisories · tour_inquiries · subscribers</text>
+
+  <rect x="400" y="474" width="320" height="70" rx="10" class="box-sand" />
+  <text x="560" y="498" class="b-title">Atomic CMS Store (.data/content.json)</text>
+  <text x="560" y="516" class="b-sub">Write-via-temp rename persistence</text>
+  <text x="560" y="532" class="b-sub">Overrides merged seamlessly over base rows</text>
+
+  <rect x="740" y="474" width="320" height="70" rx="10" class="box-light" />
+  <text x="900" y="498" class="b-title">Browser Session &amp; Queue Store</text>
+  <text x="900" y="516" class="b-sub">localStorage Demo Adapter</text>
+  <text x="900" y="532" class="b-sub">nl.users.v1 · nl.inquiries.v1 · nl.session.v1</text>
+
+  <!-- Tier 4: External System Integrations -->
+  <rect x="40" y="595" width="1040" height="125" rx="14" class="tier" />
+  <text x="60" y="619" class="tier-lbl">4. EXTERNAL SYSTEM INTEGRATIONS (CLOUD SERVICES &amp; THIRD-PARTY APIS)</text>
+
+  <rect x="60" y="634" width="235" height="70" rx="10" class="box-ext" />
+  <text x="177" y="658" class="b-title">Resend Email API</text>
+  <text x="177" y="676" class="b-sub">Booking confirmations,</text>
+  <text x="177" y="691" class="b-sub">alerts &amp; status updates</text>
+
+  <rect x="315" y="634" width="235" height="70" rx="10" class="box-ext" />
+  <text x="432" y="658" class="b-title">Open-Meteo Weather API</text>
+  <text x="432" y="676" class="b-sub">Live temp, wind &amp; rain risk</text>
+  <text x="432" y="691" class="b-sub">(13.168°N, 121.351°E)</text>
+
+  <rect x="570" y="634" width="235" height="70" rx="10" class="box-ext" />
+  <text x="687" y="658" class="b-title">OpenStreetMap / Maps</text>
+  <text x="687" y="676" class="b-sub">Interactive jetty map &amp;</text>
+  <text x="687" y="691" class="b-sub">protected zone boundaries</text>
+
+  <rect x="825" y="634" width="235" height="70" rx="10" class="box-ext" />
+  <text x="942" y="658" class="b-title">QR Code Standards</text>
+  <text x="942" y="676" class="b-sub">ISO 18004 Digital Pass</text>
+  <text x="942" y="691" class="b-sub">&amp; Ranger Dock Verification</text>
+
+  <!-- Vertical Connectors -->
+  <path class="conn" d="M 177 204 L 177 294" />
+  <path class="conn" d="M 432 204 L 432 294" />
+  <path class="conn" d="M 687 204 L 687 294" />
+  <path class="conn" d="M 942 204 L 942 294" />
+
+  <path class="conn" d="M 177 384 L 177 474" />
+  <path class="conn" d="M 432 384 L 520 474" />
+  <path class="conn" d="M 900 384 L 900 474" />
+
+  <path class="conn" d="M 687 384 L 177 634" />
+  <path class="conn" d="M 687 384 L 432 634" />
+  <path class="conn" d="M 177 384 L 687 634" />
+  <path class="conn" d="M 942 384 L 942 634" />
+</svg>

@@ -6,9 +6,8 @@
  * table so the output is identical on the server and in the browser.
  *
  * The schema stores the body as one `content` column; paragraphs are split on
- * blank lines. Fields the table does not carry yet — badge label, category,
- * expiry and action list — fall back to neutral values until Milestone 2 adds
- * them to the CMS.
+ * blank lines. Category, expiry and the action list come from their own
+ * columns. The badge label stays derived from the severity enum.
  */
 
 import { cacheLife, cacheTag } from "next/cache";
@@ -17,10 +16,15 @@ import {
   mergeAdvisories,
   readOverrides,
 } from "@/lib/content-store";
-import { getSupabaseClient, type Tables } from "@/lib/supabase";
+import {
+  getSupabaseClient,
+  type AdvisoryCategory,
+  type Tables,
+} from "@/lib/supabase";
 import { fetchOrFallback, queryError } from "@/lib/supabase/query";
 
 export type AdvisorySeverity = "CRITICAL" | "WARNING" | "INFO";
+export type { AdvisoryCategory };
 
 export type Advisory = {
   slug: string;
@@ -28,7 +32,7 @@ export type Advisory = {
   severity: AdvisorySeverity;
   /** Short label for the badge — "Seasonal", "Warning", "Closure"… */
   severityLabel: string;
-  category: "Wildlife" | "Water" | "Access" | "Operations";
+  category: AdvisoryCategory;
   /** ISO date (yyyy-mm-dd) the notice was published. */
   publishedAt: string;
   /** ISO date the notice stops applying, when it has one. */
@@ -250,14 +254,17 @@ function toAdvisory(row: Tables<"advisories">): Advisory {
     title: row.title,
     severity: row.severity,
     severityLabel: severityLabels[row.severity],
-    // The table has no category column yet; the CMS milestone adds it.
-    category: "Operations",
+    category: row.category,
     publishedAt: row.published_at.slice(0, 10),
+    ...(row.effective_until
+      ? { effectiveUntil: row.effective_until.slice(0, 10) }
+      : {}),
     excerpt: row.excerpt,
     body: row.content
       .split(/\n{2,}/)
       .map((paragraph) => paragraph.trim())
       .filter(Boolean),
+    ...(row.actions.length > 0 ? { actions: row.actions } : {}),
     isActiveBanner: row.is_active_banner,
   };
 }

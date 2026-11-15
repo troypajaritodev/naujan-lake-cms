@@ -122,25 +122,38 @@ export default async function ToursPage() {
                     ))}
                   </div>
 
-                  <div className="mt-6 flex items-end justify-between gap-4 border-t border-ink/8 pt-5">
-                    <p>
-                      <span className="font-display text-[22px] text-ink">
-                        {peso.format(tour.ratePerPerson)}
-                      </span>
-                      <span className="ml-1.5 text-[12px] text-sand-600">
-                        per person
-                      </span>
-                    </p>
-                    <Link
-                      href={`/tours/${tour.slug}`}
-                      className="group/cta inline-flex items-center gap-2 text-[13px] font-medium text-lake-700 transition-colors hover:text-lake-900"
-                    >
-                      View package
-                      <ArrowRight
-                        className="size-4 transition-transform duration-300 group-hover/cta:translate-x-1"
-                        strokeWidth={1.9}
-                      />
-                    </Link>
+                  <div className="mt-6 flex flex-wrap items-end justify-between gap-4 border-t border-ink/8 pt-5">
+                    <div>
+                      <p>
+                        <span className="font-display text-[24px] text-ink">
+                          {peso.format(tour.ratePerPerson)}
+                        </span>
+                        <span className="ml-1.5 text-[12px] text-sand-600">
+                          per person
+                        </span>
+                      </p>
+                      <p className="mt-0.5 text-[11.5px] font-medium text-lake-700">
+                        50% first payment: {peso.format(Math.round(tour.ratePerPerson * 0.5))}/guest
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2.5">
+                      <Link
+                        href={`/tours/${tour.slug}`}
+                        className="rounded-full px-3.5 py-2 text-[12.5px] font-medium text-ink-soft transition-colors hover:bg-sand-100 hover:text-ink"
+                      >
+                        Details
+                      </Link>
+                      <Link
+                        href={`/inquire?tour=${tour.slug}`}
+                        className="group/cta inline-flex items-center gap-1.5 rounded-full bg-lake-800 px-4 py-2 text-[12.5px] font-semibold text-sand-50 transition-colors hover:bg-lake-700"
+                      >
+                        Book now
+                        <ArrowRight
+                          className="size-3.5 transition-transform duration-300 group-hover/cta:translate-x-0.5"
+                          strokeWidth={2}
+                        />
+                      </Link>
+                    </div>
                   </div>
                 </div>
               </article>
@@ -148,8 +161,9 @@ export default async function ToursPage() {
           </div>
 
           <p className="mt-10 text-[12.5px] leading-relaxed text-sand-700">
-            Booking is by inquiry only. Payment is settled on site at the park
-            office — no online transaction is processed through this portal.
+            Booking requires a 50% (or full) first payment deposit via GCash,
+            Maya, or Bank Transfer. Once submitted, track your reservation
+            from Pending → On Process → Confirmed inside My Account.
           </p>
         </div>
       </section>

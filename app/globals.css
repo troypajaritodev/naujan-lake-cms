@@ -139,6 +139,28 @@
     mix-blend-mode: overlay;
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.82' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)' opacity='0.55'/%3E%3C/svg%3E");
   }
+
+  .surface-card {
+    background-color: #ffffff;
+    box-shadow: 0 10px 30px -22px rgba(12, 26, 23, 0.22);
+    transition: box-shadow 220ms ease, transform 220ms ease, border-color 220ms ease;
+  }
+
+  .surface-card:hover {
+    box-shadow: 0 16px 38px -22px rgba(12, 26, 23, 0.28);
+  }
+}
+
+@media print {
+  header,
+  footer,
+  nav {
+    display: none !important;
+  }
+
+  body {
+    background: #ffffff !important;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

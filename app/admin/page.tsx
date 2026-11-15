@@ -3,6 +3,8 @@ import { connection } from "next/server";
 import AdminOverview from "@/components/admin/admin-overview";
 import { getArchivedAdvisories, getSortedAdvisories } from "@/lib/advisories";
 import { readOverrides } from "@/lib/content-store";
+import { getLakeZones, getParkRules } from "@/lib/guidelines-data";
+import { getSpecies, getWildlifeGroups } from "@/lib/species";
 import { getToursForAdmin } from "@/lib/tours";
 
 export const metadata: Metadata = {
@@ -54,12 +56,17 @@ function addDays(days: number): string {
 export default async function AdminOverviewPage() {
   await connection();
 
-  const [published, archived, tours, overrides] = await Promise.all([
-    getSortedAdvisories(),
-    getArchivedAdvisories(),
-    getToursForAdmin(),
-    readOverrides(),
-  ]);
+  const [published, archived, tours, overrides, species, groups, rules, zones] =
+    await Promise.all([
+      getSortedAdvisories(),
+      getArchivedAdvisories(),
+      getToursForAdmin(),
+      readOverrides(),
+      getSpecies(),
+      getWildlifeGroups(),
+      getParkRules(),
+      getLakeZones(),
+    ]);
 
   const unpublished = new Set(overrides.tours.unpublished);
   const onSale = tours.filter((tour) => !unpublished.has(tour.slug));
@@ -78,8 +85,8 @@ export default async function AdminOverviewPage() {
 
   const averageRate = onSale.length
     ? Math.round(
-        onSale.reduce((sum, tour) => sum + tour.ratePerPerson, 0) / onSale.length,
-      )
+      onSale.reduce((sum, tour) => sum + tour.ratePerPerson, 0) / onSale.length,
+    )
     : 0;
 
   return (
@@ -96,6 +103,14 @@ export default async function AdminOverviewPage() {
         total: tours.length,
         onSale: onSale.length,
         averageRate,
+      }}
+      wildlife={{
+        published: species.length,
+        groups: groups.length,
+      }}
+      guidelines={{
+        rules: rules.length,
+        zones: zones.length,
       }}
     />
   );

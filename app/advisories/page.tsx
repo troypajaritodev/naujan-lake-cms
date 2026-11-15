@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { ArrowUpRight, CalendarClock } from "lucide-react";
 import AdvisoryBadge from "@/components/advisory-badge";
+import LakeWeatherCard from "@/components/advisories/lake-weather-card";
 import SectionHeading from "@/components/section-heading";
 import {
   formatAdvisoryDate,
@@ -81,13 +82,16 @@ export default async function AdvisoriesPage() {
       </section>
 
       <section className="bg-sand-50 py-16 lg:py-20">
-        <div className="mx-auto w-full max-w-7xl px-5 sm:px-8 lg:px-12">
-          <SectionHeading
-            eyebrow="Notice board"
-            title="Current notices"
-            description="Newest first. Each notice lists the date it was published and, where the office has set one, the date it stops applying."
-            action={{ label: "Park guidelines", href: "/guidelines" }}
-          />
+        <div className="mx-auto w-full max-w-7xl space-y-12 px-5 sm:px-8 lg:px-12">
+          <LakeWeatherCard />
+
+          <div>
+            <SectionHeading
+              eyebrow="Notice board"
+              title="Current notices"
+              description="Newest first. Each notice lists the date it was published and, where the office has set one, the date it stops applying."
+              action={{ label: "Park guidelines", href: "/guidelines" }}
+            />
 
           <ul className="mt-12 grid gap-4 lg:grid-cols-2">
             {advisories.map((advisory) => (
@@ -149,6 +153,7 @@ export default async function AdvisoriesPage() {
             anything urgent on the water, call the park office or dial{" "}
             <span className="font-semibold text-ink">911</span>.
           </p>
+          </div>
         </div>
       </section>
     </>

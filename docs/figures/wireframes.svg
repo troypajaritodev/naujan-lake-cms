@@ -1,0 +1,146 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1160 820" role="img" aria-labelledby="title desc">
+  <title id="title">UI Wireframes - Naujan Lake CMS</title>
+  <desc id="desc">Four-screen low-fidelity wireframes covering Home Portal, Booking with First Payment, Account Tracker with QR Pass, and Admin CMS.</desc>
+  <defs>
+    <style>
+      .bg { fill: #f7f4ec; }
+      .title { font: 600 22px "Georgia", serif; fill: #122629; }
+      .sub { font: 400 13px "Segoe UI", sans-serif; fill: #536466; }
+      .frame { fill: #ffffff; stroke: #23494f; stroke-width: 1.8; }
+      .bar { fill: #103b42; }
+      .card { fill: #f5f2e9; stroke: #cfc8b6; stroke-width: 1.2; }
+      .accent { fill: #1e5f68; }
+      .gold { fill: #d9a441; }
+      .pill { fill: #dcebe8; stroke: #9bc0ba; stroke-width: 1; }
+      .wt { font: 700 13px "Segoe UI", sans-serif; fill: #122629; }
+      .wh { font: 700 11px "Segoe UI", sans-serif; fill: #faf8f2; }
+      .ws { font: 400 10px "Segoe UI", sans-serif; fill: #536466; }
+      .wm { font: 600 10px "Segoe UI", sans-serif; fill: #103b42; }
+    </style>
+  </defs>
+
+  <rect class="bg" width="1160" height="820" rx="16" />
+  <text x="40" y="44" class="title">Application Wireframes — Core Visitor &amp; Admin Screens</text>
+  <text x="40" y="66" class="sub">Structural layout blueprints for Public Home, Tour Booking + First Payment, Visitor Account + QR Pass, and Admin CMS</text>
+
+  <!-- Screen 1: Public Home (Top Left) -->
+  <text x="40" y="102" class="wt">1. Public Home Portal (/)</text>
+  <rect x="40" y="112" width="520" height="320" rx="12" class="frame" />
+  <rect x="40" y="112" width="520" height="34" rx="12" class="bar" />
+  <text x="58" y="133" class="wh">LOGO · Naujan Lake   |   Wildlife   Tours   Guidelines   Advisories   [Sign in]</text>
+  <rect x="56" y="156" width="488" height="22" rx="6" fill="#fff4d6" stroke="#e4c271" />
+  <text x="68" y="171" class="ws">CRITICAL ADVISORY BANNER · Live park status notice</text>
+  <rect x="56" y="188" width="300" height="108" rx="8" class="card" />
+  <text x="72" y="212" class="wm">HERO HEADLINE &amp; MISSION</text>
+  <text x="72" y="230" class="ws">Explore Oriental Mindoro's Ramsar Wetland</text>
+  <rect x="72" y="248" width="106" height="24" rx="12" class="accent" />
+  <text x="95" y="264" class="wh">Explore Tours</text>
+  <rect x="188" y="248" width="106" height="24" rx="12" class="pill" />
+  <text x="210" y="264" class="wm">Park Rules</text>
+  <rect x="370" y="188" width="174" height="108" rx="8" class="card" />
+  <text x="386" y="212" class="wm">LIVE WEATHER WIDGET</text>
+  <text x="386" y="232" class="ws">28°C · Boat Safety: Clear</text>
+  <text x="386" y="250" class="ws">Peak Season: Oct–Mar</text>
+  <rect x="56" y="308" width="154" height="108" rx="8" class="card" />
+  <text x="72" y="332" class="wm">Featured Wildlife (18)</text>
+  <text x="72" y="352" class="ws">Philippine Duck, Egrets...</text>
+  <rect x="223" y="308" width="154" height="108" rx="8" class="card" />
+  <text x="239" y="332" class="wm">Eco-Tour Packages (4)</text>
+  <text x="239" y="352" class="ws">Published Tariffs + Book</text>
+  <rect x="390" y="308" width="154" height="108" rx="8" class="card" />
+  <text x="406" y="332" class="wm">Park Map &amp; Rules</text>
+  <text x="406" y="352" class="ws">3 Protected Lake Zones</text>
+
+  <!-- Screen 2: Booking & First Payment (Top Right) -->
+  <text x="600" y="102" class="wt">2. Tour Booking &amp; First Payment (/inquire)</text>
+  <rect x="600" y="112" width="520" height="320" rx="12" class="frame" />
+  <rect x="600" y="112" width="520" height="34" rx="12" class="bar" />
+  <text x="618" y="133" class="wh">Book an Accredited Tour · Naujan Lake National Park</text>
+  <rect x="616" y="160" width="295" height="256" rx="8" class="card" />
+  <text x="632" y="182" class="wm">BOOKING FORM FIELDS</text>
+  <rect x="632" y="194" width="260" height="24" rx="5" fill="#fff" stroke="#cfc8b6" />
+  <text x="642" y="210" class="ws">Select Package · Sunrise Boat / Birdwatching</text>
+  <rect x="632" y="226" width="124" height="24" rx="5" fill="#fff" stroke="#cfc8b6" />
+  <text x="642" y="242" class="ws">Preferred Date</text>
+  <rect x="768" y="226" width="124" height="24" rx="5" fill="#fff" stroke="#cfc8b6" />
+  <text x="778" y="242" class="ws">Party Size (1–15)</text>
+  <rect x="632" y="260" width="260" height="44" rx="5" fill="#fff" stroke="#cfc8b6" />
+  <text x="642" y="278" class="ws">Payment Channel: GCash | Maya | Bank</text>
+  <text x="642" y="294" class="ws">Ref No. + Optional Receipt Image Upload</text>
+  <rect x="632" y="314" width="260" height="52" rx="5" fill="#fff" stroke="#cfc8b6" />
+  <text x="642" y="334" class="ws">Guest Name, Email, Mobile + Special Notes</text>
+  <rect x="632" y="378" width="150" height="26" rx="13" class="accent" />
+  <text x="654" y="395" class="wh">Submit Booking + Pay</text>
+
+  <rect x="925" y="160" width="179" height="256" rx="8" class="card" />
+  <text x="940" y="184" class="wm">LIVE FARE BREAKDOWN</text>
+  <text x="940" y="210" class="ws">Rate × Party Size = Total</text>
+  <line x1="940" y1="226" x2="1088" y2="226" stroke="#cfc8b6" />
+  <text x="940" y="250" class="wm">First Payment (30%)</text>
+  <text x="940" y="268" class="ws">Required Deposit Today</text>
+  <text x="940" y="296" class="wm">Balance on Arrival</text>
+  <text x="940" y="314" class="ws">Settled at Park Jetty</text>
+  <rect x="940" y="340" width="148" height="60" rx="6" class="pill" />
+  <text x="950" y="362" class="wm">Generates Reference:</text>
+  <text x="950" y="380" class="ws">INQ-XXXX + Email Alert</text>
+
+  <!-- Screen 3: Account Tracker + QR Pass + Messenger (Bottom Left) -->
+  <text x="40" y="466" class="wt">3. Visitor Account: Tracker, Messenger &amp; QR Entry Pass (/account)</text>
+  <rect x="40" y="476" width="520" height="316" rx="12" class="frame" />
+  <rect x="40" y="476" width="520" height="34" rx="12" class="bar" />
+  <text x="58" y="497" class="wh">My Account   |   Bookings (Tracker)   |   Profile   |   Sign out</text>
+  <rect x="56" y="524" width="488" height="252" rx="8" class="card" />
+  <text x="72" y="546" class="wm">BOOKING CARD · INQ-1042  [ON PROCESS]  [DEPOSIT VERIFIED]</text>
+  <rect x="72" y="558" width="456" height="36" rx="6" fill="#fff" stroke="#cfc8b6" />
+  <text x="86" y="580" class="ws">4-STAGE TRACKER:  (1) Pending  --&gt;  (2) On Process  --&gt;  (3) Confirmed  --&gt;  (4) Completed</text>
+  <rect x="72" y="604" width="268" height="114" rx="6" fill="#fff" stroke="#cfc8b6" />
+  <text x="86" y="624" class="wm">VISITOR &lt;-&gt; PARK MESSENGER</text>
+  <text x="86" y="644" class="ws">[Visitor]: Deposit sent via GCash #88412</text>
+  <text x="86" y="662" class="ws">[Ranger]: Verified! Boat #04 assigned.</text>
+  <rect x="86" y="684" width="240" height="22" rx="11" class="pill" />
+  <text x="98" y="699" class="ws">Type reply to park office... [Send]</text>
+
+  <rect x="352" y="604" width="176" height="114" rx="6" fill="#fff" stroke="#1e5f68" />
+  <text x="366" y="624" class="wm">DIGITAL QR PASS</text>
+  <rect x="408" y="634" width="62" height="54" rx="4" fill="#103b42" />
+  <text x="424" y="666" class="wh">QR</text>
+  <text x="368" y="706" class="ws">Scan -&gt; /verify?ref=...</text>
+
+  <rect x="72" y="728" width="136" height="28" rx="14" class="accent" />
+  <text x="94" y="746" class="wh">View QR Pass</text>
+  <rect x="220" y="728" width="120" height="28" rx="14" class="pill" />
+  <text x="242" y="746" class="wm">View Receipt</text>
+
+  <!-- Screen 4: Admin CMS Console (Bottom Right) -->
+  <text x="600" y="466" class="wt">4. Admin CMS &amp; Operations Panel (/admin/*)</text>
+  <rect x="600" y="476" width="520" height="316" rx="12" class="frame" />
+  <rect x="600" y="476" width="136" height="316" rx="12" class="bar" />
+  <text x="616" y="502" class="wh">ADMIN CMS SIDEBAR</text>
+  <text x="616" y="532" class="wh">• Overview</text>
+  <text x="616" y="554" class="wh">• Users</text>
+  <text x="616" y="576" class="wh">• Bookings &amp; QR</text>
+  <text x="616" y="598" class="wh">• Subscribers</text>
+  <text x="616" y="620" class="wh">• Advisories</text>
+  <text x="616" y="642" class="wh">• Packages</text>
+  <text x="616" y="664" class="wh">• Wildlife (/species)</text>
+  <text x="616" y="686" class="wh">• Rules &amp; Zones</text>
+
+  <rect x="752" y="492" width="352" height="60" rx="8" class="card" />
+  <text x="768" y="514" class="wm">KPI STRIP · Pending | Deposits | Published | Archived</text>
+  <text x="768" y="534" class="ws">[Search]  [Filter]  [Verify QR Pass]  [Export CSV Report]</text>
+
+  <rect x="752" y="564" width="352" height="104" rx="8" class="card" />
+  <text x="768" y="586" class="wm">BOOKING / CONTENT QUEUE ROW</text>
+  <text x="768" y="606" class="ws">Ref / Title  |  Status Pill  |  Deposit / Metadata</text>
+  <rect x="768" y="624" width="118" height="24" rx="12" class="accent" />
+  <text x="782" y="640" class="wh">Accept / Save</text>
+  <rect x="896" y="624" width="90" height="24" rx="12" class="pill" />
+  <text x="914" y="640" class="wm">Message</text>
+  <rect x="996" y="624" width="92" height="24" rx="12" class="pill" />
+  <text x="1012" y="640" class="wm">Archive</text>
+
+  <rect x="752" y="680" width="352" height="96" rx="8" class="card" />
+  <text x="768" y="704" class="wm">LIVE CACHE INVALIDATION (updateTag)</text>
+  <text x="768" y="724" class="ws">Advisories, Tours, Wildlife Species, and Rules &amp; Zones</text>
+  <text x="768" y="742" class="ws">publish straight to public routes in real time.</text>
+</svg>

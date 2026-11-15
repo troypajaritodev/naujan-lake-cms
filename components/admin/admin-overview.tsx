@@ -5,25 +5,29 @@
  *
  * Two data sources meet here: notices and packages are resolved on the server
  * and arrive as props, while the inquiry queue and the account list live in
- * `localStorage` and are read through the same store the other screens use. The
- * queue is deliberately the loudest thing on the page — a booking nobody triages
- * is the only failure mode this panel really has.
+ * `localStorage` and are read through the same store the other screens use.
  */
 
+import { useState } from "react";
 import Link from "next/link";
 import {
   ArrowRight,
+  Bird,
   CalendarClock,
   CheckCircle2,
   Inbox,
+  Loader2,
+  Mail,
   Megaphone,
   Route,
+  Scale,
   Users,
 } from "lucide-react";
 import StatCard from "@/components/admin/stat-card";
 import { summariseUsers, useUsers } from "@/lib/auth";
-import { useInquiries } from "@/lib/inquiries";
+import { acceptInquiry, useInquiries, type Inquiry } from "@/lib/inquiries";
 import { useMinuteNow } from "@/lib/now";
+import { useSubscribers } from "@/lib/subscribers";
 
 const MONTHS = [
   "Jan",
@@ -75,6 +79,8 @@ type OverviewProps = {
     pinnedTitle: string | null;
   };
   packages: { total: number; onSale: number; averageRate: number };
+  wildlife: { published: number; groups: number };
+  guidelines: { rules: number; zones: number };
 };
 
 const peso = new Intl.NumberFormat("en-PH", {
@@ -87,12 +93,17 @@ export default function AdminOverview({
   today,
   notices,
   packages,
+  wildlife,
+  guidelines,
 }: OverviewProps) {
   const inquiries = useInquiries();
   const accounts = summariseUsers(useUsers());
+  const subscribers = useSubscribers();
+  const activeSubscribers = subscribers.filter(
+    (entry) => entry.status === "ACTIVE",
+  ).length;
+  const [acceptingId, setAcceptingId] = useState<string | null>(null);
 
-  // Relative ages use a minute-quantised clock, so the server-rendered label
-  // and the first client render agree.
   const now = useMinuteNow();
 
   const ageLabel = (iso: string) => {
@@ -103,25 +114,60 @@ export default function AdminOverview({
   const pending = inquiries
     .filter((inquiry) => inquiry.status === "PENDING")
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  const onProcessCount = inquiries.filter(
+    (inquiry) => inquiry.status === "ON_PROCESS",
+  ).length;
+  const verifiedDeposits = inquiries
+    .filter((inquiry) => inquiry.paymentStatus === "VERIFIED")
+    .reduce((sum, inquiry) => sum + (inquiry.firstPaymentAmount ?? 0), 0);
+
   const newest = pending[0];
   const oldest = pending[pending.length - 1];
+
+  async function quickAccept(inquiry: Inquiry) {
+    setAcceptingId(inquiry.id);
+    try {
+      const next = await acceptInquiry(inquiry.id, { verifyPayment: true });
+      const updated = next.find((item) => item.id === inquiry.id) ?? inquiry;
+      void fetch("/api/inquiries/status", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...updated,
+          status: "ON_PROCESS",
+          actor: "park",
+        }),
+        keepalive: true,
+      }).catch(() => {});
+    } finally {
+      setAcceptingId(null);
+    }
+  }
 
   const modules = [
     {
       href: "/admin/users",
       label: "Users",
-      hint: "Accounts, roles and access",
+      hint: `${accounts.active} active · ${accounts.suspended} suspended`,
       value: accounts.total,
       unit: accounts.total === 1 ? "account" : "accounts",
       icon: Users,
     },
     {
       href: "/admin/inquiries",
-      label: "Inquiries",
-      hint: pending.length > 0 ? "Waiting on a decision" : "All triaged",
-      value: pending.length,
-      unit: pending.length === 1 ? "pending" : "pending",
+      label: "Bookings & Payments",
+      hint: `${pending.length} pending · ${onProcessCount} on process`,
+      value: pending.length + onProcessCount,
+      unit: "active",
       icon: Inbox,
+    },
+    {
+      href: "/admin/subscribers",
+      label: "Subscribers",
+      hint: `${subscribers.length} total in mailing list`,
+      value: activeSubscribers,
+      unit: "active",
+      icon: Mail,
     },
     {
       href: "/admin/advisories",
@@ -141,13 +187,29 @@ export default function AdminOverview({
       unit: "on sale",
       icon: Route,
     },
+    {
+      href: "/admin/species",
+      label: "Wildlife",
+      hint: `${wildlife.groups} taxonomic groups`,
+      value: wildlife.published,
+      unit: "species",
+      icon: Bird,
+    },
+    {
+      href: "/admin/rules",
+      label: "Rules & Zones",
+      hint: `${guidelines.zones} lake zones enforced`,
+      value: guidelines.rules,
+      unit: "rules",
+      icon: Scale,
+    },
   ];
 
   return (
     <div className="space-y-6">
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard
-          label="Pending inquiries"
+          label="Pending bookings"
           value={pending.length}
           hint={
             newest
@@ -157,23 +219,15 @@ export default function AdminOverview({
           tone="alert"
         />
         <StatCard
-          label="Published notices"
-          value={notices.published}
-          hint={
-            notices.expiring > 0
-              ? `${notices.expiring} ${notices.expiring === 1 ? "expires" : "expire"} within 30 days`
-              : `${notices.archived} archived`
-          }
+          label="On Process"
+          value={onProcessCount}
+          hint="Accepted & preparing boat/guide"
           tone="lake"
         />
         <StatCard
-          label="Packages on sale"
-          value={packages.onSale}
-          hint={
-            packages.total === packages.onSale
-              ? "Every departure is bookable"
-              : `${packages.total - packages.onSale} off sale`
-          }
+          label="Verified deposits"
+          value={peso.format(verifiedDeposits)}
+          hint={`${packages.onSale} packages on sale`}
           tone="moss"
         />
         <StatCard
@@ -182,6 +236,73 @@ export default function AdminOverview({
           hint={`${accounts.staff} staff · ${accounts.customers} customers`}
           tone="ink"
         />
+      </div>
+
+      {/* Live Operations Pipeline Summary Strip */}
+      <div className="surface-card rounded-2xl p-5 ring-1 ring-ink/8">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="text-[10px] font-semibold tracking-[0.16em] text-sand-600 uppercase">
+              Booking Pipeline Health
+            </p>
+            <p className="mt-0.5 text-[13px] text-ink-soft/80">
+              End-to-end traveler flow across Pending, On Process, and Confirmed trips
+            </p>
+          </div>
+          <Link
+            href="/admin/inquiries"
+            className="inline-flex items-center gap-1.5 rounded-full bg-lake-50 px-3.5 py-1.5 text-[12px] font-semibold text-lake-800 ring-1 ring-lake-600/20 hover:bg-lake-100"
+          >
+            Manage all bookings
+            <ArrowRight className="size-3.5" />
+          </Link>
+        </div>
+
+        <div className="mt-4 grid gap-3 sm:grid-cols-4">
+          {(
+            [
+              {
+                label: "Pending review",
+                count: pending.length,
+                dot: "bg-reed-400",
+                tone: "bg-reed-50/70 ring-reed-600/20",
+              },
+              {
+                label: "Accepted · On Process",
+                count: onProcessCount,
+                dot: "bg-lake-600",
+                tone: "bg-lake-50/70 ring-lake-600/20",
+              },
+              {
+                label: "Confirmed ready",
+                count: inquiries.filter((i) => i.status === "CONFIRMED").length,
+                dot: "bg-moss-600",
+                tone: "bg-moss-50/70 ring-moss-600/20",
+              },
+              {
+                label: "Completed trips",
+                count: inquiries.filter((i) => i.status === "COMPLETED").length,
+                dot: "bg-moss-800",
+                tone: "bg-sand-100/80 ring-ink/10",
+              },
+            ] as const
+          ).map((stage) => (
+            <div
+              key={stage.label}
+              className={`rounded-xl px-4 py-3 ring-1 ${stage.tone}`}
+            >
+              <div className="flex items-center justify-between gap-2">
+                <span className="flex items-center gap-2 text-[11.5px] font-semibold text-ink">
+                  <span className={`size-2 rounded-full ${stage.dot}`} />
+                  {stage.label}
+                </span>
+                <span className="font-display text-[22px] font-light text-ink tabular-nums">
+                  {stage.count}
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
 
       <div className="grid items-start gap-6 xl:grid-cols-[1.55fr_1fr]">
@@ -195,7 +316,7 @@ export default function AdminOverview({
                 id="attention-heading"
                 className="flex items-center gap-2 font-display text-[19px] leading-tight text-ink"
               >
-                Needs attention
+                Needs acceptance
                 {pending.length > 0 ? (
                   <span className="inline-flex items-center gap-1.5 rounded-full bg-alert-50 px-2 py-0.5 text-[10px] font-semibold tracking-[0.1em] text-alert-700 uppercase ring-1 ring-alert-500/25 ring-inset tabular-nums">
                     <span className="size-1.5 rounded-full bg-alert-500" />
@@ -206,7 +327,7 @@ export default function AdminOverview({
               <p className="mt-0.5 text-[12.5px] text-ink-soft/65">
                 {oldest
                   ? `Oldest request arrived ${ageLabel(oldest.createdAt)} · ${today}`
-                  : today}
+                  : `${onProcessCount} currently on process · ${today}`}
               </p>
             </div>
             <Link
@@ -220,33 +341,51 @@ export default function AdminOverview({
 
           {pending.length > 0 ? (
             <ul className="divide-y divide-ink/6">
-              {pending.slice(0, 4).map((inquiry) => (
-                <li
-                  key={inquiry.id}
-                  className="flex flex-wrap items-start gap-x-4 gap-y-2 px-5 py-3.5 transition-colors hover:bg-sand-50/70"
-                >
-                  <span
-                    className="mt-1 size-1.5 shrink-0 rounded-full bg-alert-500"
-                    aria-hidden="true"
-                  />
-                  <div className="min-w-0 flex-1">
-                    <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[13.5px] font-medium text-ink">
-                      {inquiry.fullName}
-                      <span className="font-mono text-[10.5px] font-normal text-ink-soft/45">
-                        {inquiry.reference}
-                      </span>
-                    </p>
-                    <p className="mt-1 text-[12px] leading-relaxed text-ink-soft/60">
-                      {inquiry.tourTitle} · {inquiry.partySize}{" "}
-                      {inquiry.partySize === 1 ? "guest" : "guests"} · prefers{" "}
-                      {formatDay(inquiry.preferredDate)}
-                    </p>
-                  </div>
-                  <span className="shrink-0 text-[11px] text-ink-soft/45 tabular-nums">
-                    {ageLabel(inquiry.createdAt)}
-                  </span>
-                </li>
-              ))}
+              {pending.slice(0, 5).map((inquiry) => {
+                const busy = acceptingId === inquiry.id;
+                return (
+                  <li
+                    key={inquiry.id}
+                    className="flex flex-wrap items-center gap-x-4 gap-y-2 px-5 py-3.5 transition-colors hover:bg-sand-50/70"
+                  >
+                    <span
+                      className="size-1.5 shrink-0 rounded-full bg-alert-500"
+                      aria-hidden="true"
+                    />
+                    <div className="min-w-0 flex-1">
+                      <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[13.5px] font-medium text-ink">
+                        {inquiry.fullName}
+                        <span className="font-mono text-[10.5px] font-normal text-ink-soft/50">
+                          {inquiry.reference}
+                        </span>
+                        {(inquiry.firstPaymentAmount ?? 0) > 0 && (
+                          <span className="rounded-full bg-reed-50 px-2 py-0.5 font-mono text-[10px] font-semibold text-reed-800 ring-1 ring-reed-600/20">
+                            {peso.format(inquiry.firstPaymentAmount ?? 0)} first
+                            payment
+                          </span>
+                        )}
+                      </p>
+                      <p className="mt-1 text-[12px] leading-relaxed text-ink-soft/65">
+                        {inquiry.tourTitle} · {inquiry.partySize}{" "}
+                        {inquiry.partySize === 1 ? "guest" : "guests"} ·{" "}
+                        {formatDay(inquiry.preferredDate)} ·{" "}
+                        <span className="text-ink-soft/45">
+                          {ageLabel(inquiry.createdAt)}
+                        </span>
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => void quickAccept(inquiry)}
+                      className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-lake-800 px-3 py-1.5 text-[11px] font-semibold text-sand-50 transition-colors hover:bg-lake-700 disabled:opacity-60"
+                    >
+                      {busy && <Loader2 className="size-3 animate-spin" />}
+                      Accept → On Process
+                    </button>
+                  </li>
+                );
+              })}
             </ul>
           ) : (
             <div className="flex flex-col items-center gap-2 px-5 py-12 text-center">
@@ -259,15 +398,15 @@ export default function AdminOverview({
                 Nothing waiting on you
               </p>
               <p className="max-w-[34ch] text-[12px] leading-relaxed text-ink-soft/60">
-                Every tour request has been triaged. New bookings appear here and
-                in the header badge as they arrive.
+                Every pending booking has been reviewed. New bookings with first
+                payments appear here as they arrive.
               </p>
             </div>
           )}
 
-          {pending.length > 4 ? (
+          {pending.length > 5 ? (
             <p className="border-t border-ink/6 px-5 py-3 text-[11.5px] text-ink-soft/50">
-              and {pending.length - 4} more in the queue
+              and {pending.length - 5} more in the queue
             </p>
           ) : null}
         </section>
@@ -296,7 +435,11 @@ export default function AdminOverview({
                   className="group flex items-center gap-3 px-5 py-3.5 transition-colors hover:bg-sand-50/70"
                 >
                   <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-sand-100 text-ink-soft/70 transition-colors group-hover:bg-white group-hover:text-ink">
-                    <module.icon className="size-4" strokeWidth={1.9} aria-hidden="true" />
+                    <module.icon
+                      className="size-4"
+                      strokeWidth={1.9}
+                      aria-hidden="true"
+                    />
                   </span>
                   <span className="min-w-0 flex-1">
                     <span className="block text-[13px] font-medium text-ink">

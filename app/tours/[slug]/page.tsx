@@ -271,6 +271,17 @@ export default async function TourDetailPage({ params }: TourPageProps) {
                             href={`/wildlife/${species.slug}`}
                             className="inline-flex items-center gap-1.5 rounded-full bg-sand-100 px-3 py-1.5 text-[12px] font-medium text-ink transition-colors hover:bg-sand-200"
                           >
+                            {species.photo ? (
+                              <span className="relative size-5 shrink-0 overflow-hidden rounded-full bg-white">
+                                <Image
+                                  src={species.photo.src}
+                                  alt=""
+                                  fill
+                                  sizes="20px"
+                                  className="object-cover"
+                                />
+                              </span>
+                            ) : null}
                             {species.commonName}
                             <span className="font-mono text-[10px] text-sand-600">
                               {species.status}
@@ -294,7 +305,7 @@ export default async function TourDetailPage({ params }: TourPageProps) {
                   />
                 </Link>
                 <p className="mt-3 text-center text-[11.5px] leading-relaxed text-sand-600">
-                  No online payment — fees are settled at the park office.
+                  50% first payment on booking — remaining balance settles at the park office.
                 </p>
               </div>
             </aside>

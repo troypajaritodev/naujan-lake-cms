@@ -23,6 +23,8 @@
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { Advisory } from "@/lib/advisories";
+import type { ParkRule, Zone } from "@/lib/guidelines";
+import type { Species } from "@/lib/species-meta";
 import type { Tour } from "@/lib/tours";
 
 const STORE_DIR = path.join(process.cwd(), ".data");
@@ -32,32 +34,57 @@ const TEMP_FILE = `${STORE_FILE}.tmp`;
 /** Fields staff may change on an existing record. */
 export type AdvisoryPatch = Partial<Omit<Advisory, "slug">>;
 export type TourPatch = Partial<Omit<Tour, "slug">>;
+export type SpeciesPatch = Partial<Omit<Species, "slug">>;
+
+type CollectionOverride<T extends { slug: string }> = {
+  created: T[];
+  edited: Record<string, Partial<Omit<T, "slug">>>;
+  archived: string[];
+};
 
 export type ContentOverrides = {
-  advisories: {
-    /** Notices written from the admin panel — they have no database row. */
-    created: Advisory[];
-    /** Field-level edits applied over a base record, keyed by slug. */
-    edited: Record<string, AdvisoryPatch>;
-    /** Slugs hidden from the public site. Applies to seeds and new notices. */
-    archived: string[];
-  };
+  advisories: CollectionOverride<Advisory>;
   tours: {
+    created: Tour[];
     edited: Record<string, TourPatch>;
     /** Packages pulled from the public catalogue without deleting them. */
     unpublished: string[];
+  };
+  species: CollectionOverride<Species>;
+  guidelines: {
+    /** Customised park rule cards; `null` falls back to code defaults. */
+    rules: ParkRule[] | null;
+    /** Customised zoning matrix; `null` falls back to code defaults. */
+    zones: Zone[] | null;
   };
 };
 
 export function emptyOverrides(): ContentOverrides {
   return {
     advisories: { created: [], edited: {}, archived: [] },
-    tours: { edited: {}, unpublished: [] },
+    tours: { created: [], edited: {}, unpublished: [] },
+    species: { created: [], edited: {}, archived: [] },
+    guidelines: { rules: null, zones: null },
   };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function normaliseCollection<T extends { slug: string }>(
+  raw: unknown,
+): CollectionOverride<T> {
+  const section = isRecord(raw) ? raw : {};
+  return {
+    created: Array.isArray(section.created) ? (section.created as T[]) : [],
+    edited: isRecord(section.edited)
+      ? (section.edited as Record<string, Partial<Omit<T, "slug">>>)
+      : {},
+    archived: Array.isArray(section.archived)
+      ? (section.archived as string[])
+      : [],
+  };
 }
 
 /**
@@ -68,28 +95,28 @@ function normalise(raw: unknown): ContentOverrides {
   const empty = emptyOverrides();
   if (!isRecord(raw)) return empty;
 
-  const advisories = isRecord(raw.advisories) ? raw.advisories : {};
   const tours = isRecord(raw.tours) ? raw.tours : {};
+  const guidelines = isRecord(raw.guidelines) ? raw.guidelines : {};
 
   return {
-    advisories: {
-      created: Array.isArray(advisories.created)
-        ? (advisories.created as Advisory[])
-        : [],
-      edited: isRecord(advisories.edited)
-        ? (advisories.edited as Record<string, AdvisoryPatch>)
-        : {},
-      archived: Array.isArray(advisories.archived)
-        ? (advisories.archived as string[])
-        : [],
-    },
+    advisories: normaliseCollection<Advisory>(raw.advisories),
     tours: {
+      created: Array.isArray(tours.created) ? (tours.created as Tour[]) : [],
       edited: isRecord(tours.edited)
         ? (tours.edited as Record<string, TourPatch>)
         : {},
       unpublished: Array.isArray(tours.unpublished)
         ? (tours.unpublished as string[])
         : [],
+    },
+    species: normaliseCollection<Species>(raw.species),
+    guidelines: {
+      rules: Array.isArray(guidelines.rules)
+        ? (guidelines.rules as ParkRule[])
+        : null,
+      zones: Array.isArray(guidelines.zones)
+        ? (guidelines.zones as Zone[])
+        : null,
     },
   };
 }
@@ -136,6 +163,44 @@ function applyPatch<T extends { slug: string }>(
   return { ...record, ...patch, slug: record.slug };
 }
 
+function mergeCollection<T extends { slug: string }>(
+  base: T[],
+  collection: CollectionOverride<T>,
+): T[] {
+  const archived = new Set(collection.archived);
+  const seen = new Set<string>();
+  const merged: T[] = [];
+
+  for (const created of collection.created) {
+    if (archived.has(created.slug) || seen.has(created.slug)) continue;
+    seen.add(created.slug);
+    merged.push(applyPatch(created, collection.edited[created.slug]));
+  }
+
+  for (const item of base) {
+    if (archived.has(item.slug) || seen.has(item.slug)) continue;
+    merged.push(applyPatch(item, collection.edited[item.slug]));
+  }
+
+  return merged;
+}
+
+function archivedFromCollection<T extends { slug: string }>(
+  base: T[],
+  collection: CollectionOverride<T>,
+): T[] {
+  const archived = new Set(collection.archived);
+  const bySlug = new Map<string, T>();
+
+  for (const item of [...collection.created, ...base]) {
+    if (archived.has(item.slug) && !bySlug.has(item.slug)) {
+      bySlug.set(item.slug, applyPatch(item, collection.edited[item.slug]));
+    }
+  }
+
+  return [...bySlug.values()];
+}
+
 /**
  * Published notices: records written from the panel first (newest content wins
  * the top of the list anyway, since the caller sorts), then the base rows with
@@ -145,22 +210,7 @@ export function mergeAdvisories(
   base: Advisory[],
   overrides: ContentOverrides,
 ): Advisory[] {
-  const archived = new Set(overrides.advisories.archived);
-  const seen = new Set<string>();
-  const merged: Advisory[] = [];
-
-  for (const created of overrides.advisories.created) {
-    if (archived.has(created.slug) || seen.has(created.slug)) continue;
-    seen.add(created.slug);
-    merged.push(applyPatch(created, overrides.advisories.edited[created.slug]));
-  }
-
-  for (const advisory of base) {
-    if (archived.has(advisory.slug) || seen.has(advisory.slug)) continue;
-    merged.push(applyPatch(advisory, overrides.advisories.edited[advisory.slug]));
-  }
-
-  return merged;
+  return mergeCollection(base, overrides.advisories);
 }
 
 /** Notices staff have taken off the public site, for the archive list. */
@@ -168,30 +218,60 @@ export function archivedAdvisories(
   base: Advisory[],
   overrides: ContentOverrides,
 ): Advisory[] {
-  const archived = new Set(overrides.advisories.archived);
-  const byslug = new Map<string, Advisory>();
-
-  for (const advisory of [
-    ...overrides.advisories.created,
-    ...base,
-  ]) {
-    if (archived.has(advisory.slug) && !byslug.has(advisory.slug)) {
-      byslug.set(
-        advisory.slug,
-        applyPatch(advisory, overrides.advisories.edited[advisory.slug]),
-      );
-    }
-  }
-
-  return [...byslug.values()];
+  return archivedFromCollection(base, overrides.advisories);
 }
 
-/** Base packages with staff edits applied, including unpublished ones. */
+/** Published wildlife species with staff additions and edits merged over base rows. */
+export function mergeSpecies(
+  base: Species[],
+  overrides: ContentOverrides,
+): Species[] {
+  return mergeCollection(base, overrides.species);
+}
+
+/** Wildlife species archived by staff from the public catalogue. */
+export function archivedSpecies(
+  base: Species[],
+  overrides: ContentOverrides,
+): Species[] {
+  return archivedFromCollection(base, overrides.species);
+}
+
+/** Park rules shown on `/guidelines`, using staff overrides when saved. */
+export function mergeParkRules(
+  base: ParkRule[],
+  overrides: ContentOverrides,
+): ParkRule[] {
+  return overrides.guidelines.rules ?? base;
+}
+
+/** Lake zoning cards shown on `/guidelines`, using staff overrides when saved. */
+export function mergeLakeZones(
+  base: Zone[],
+  overrides: ContentOverrides,
+): Zone[] {
+  return overrides.guidelines.zones ?? base;
+}
+
+/** Staff-created plus base packages with edits applied, including unpublished ones. */
 export function applyTourEdits(
   base: Tour[],
   overrides: ContentOverrides,
 ): Tour[] {
-  return base.map((tour) => applyPatch(tour, overrides.tours.edited[tour.slug]));
+  const seen = new Set<string>();
+  const merged: Tour[] = [];
+
+  for (const created of overrides.tours.created) {
+    seen.add(created.slug);
+    merged.push(applyPatch(created, overrides.tours.edited[created.slug]));
+  }
+
+  for (const tour of base) {
+    if (seen.has(tour.slug)) continue;
+    merged.push(applyPatch(tour, overrides.tours.edited[tour.slug]));
+  }
+
+  return merged;
 }
 
 /** Packages on sale: base rows minus unpublished, with staff edits applied. */

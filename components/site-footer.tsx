@@ -22,8 +22,8 @@ export default function SiteFooter() {
       <div className="relative mx-auto w-full max-w-7xl px-5 pt-16 pb-8 sm:px-8 lg:px-12 lg:pt-20">
         <div className="grid gap-12 lg:grid-cols-12 lg:gap-8">
           <div className="lg:col-span-5">
-            <div className="flex items-center gap-3">
-              <BrandMark className="size-11" />
+            <div className="flex items-center gap-3.5">
+              <BrandMark className="size-12 ring-white/25" />
               <span className="flex flex-col leading-none">
                 <span className="font-display text-xl text-sand-50">
                   Naujan Lake

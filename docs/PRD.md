@@ -339,10 +339,14 @@ A `species_media` gallery table is planned for FR-1.2 but is intentionally outsi
 | `title` | TEXT | NOT NULL | Headline |
 | `slug` | TEXT | NOT NULL, UNIQUE | URL slug |
 | `severity` | `advisory_severity` | NOT NULL | CRITICAL, WARNING, INFO |
+| `category` | TEXT | NOT NULL, DEFAULT `'Operations'`, check | Wildlife, Water, Access, Operations |
 | `excerpt` | TEXT | NOT NULL | Summary shown in feeds |
-| `content` | TEXT | NOT NULL | Full advisory body |
+| `content` | TEXT | NOT NULL | Full advisory body, paragraphs split on blank lines |
+| `effective_until` | DATE | NULLABLE | Last day the notice applies; NULL means open-ended |
+| `actions` | TEXT[] | NOT NULL, DEFAULT `{}` | Visitor checklist shown on the detail page |
 | `is_active_banner` | BOOLEAN | NOT NULL, DEFAULT FALSE | Pins it to the site-wide banner |
 | `published_at` | TIMESTAMPTZ | NOT NULL, DEFAULT `now()` | Publication date |
+| `created_at` / `updated_at` | TIMESTAMPTZ | NOT NULL, DEFAULT `now()` | Timestamps (`updated_at` maintained by trigger) |
 
 #### `subscribers`
 | Column | Type | Constraints | Description |
@@ -543,10 +547,16 @@ park office receives an alert email. Declined and already-cancelled requests are
 | Security headers & input cleaning | `next.config.ts`, `lib/sanitize.ts` | Implemented |
 | WCAG 2.1 AA notes | `docs/accessibility.md` | Static pass and Lighthouse 13.6 audit recorded (2026-11-12) |
 | Manage users & roles | `/admin/users`, `lib/auth.ts` | Implemented (list, counters, promote/demote with self- and last-admin guards) |
-| Triage inquiries | `/admin/inquiries` | Implemented |
-| View reports | `/admin/inquiries` | Implemented |
+| Triage inquiries, first payments & messaging | `/admin/inquiries`, `lib/inquiries.ts` | Implemented (accept into `ON_PROCESS`, payment verify, visitor–park chat, CSV export) |
+| View reports & export CSV | `/admin/inquiries`, `/admin/users`, `/admin/subscribers` | Implemented |
 | Publish, edit and archive advisories | `/admin/advisories`, `lib/content-store.ts` | Implemented |
 | Manage package rates and availability | `/admin/tours`, `lib/content-store.ts` | Implemented |
+| Manage wildlife catalogue | `/admin/species`, `lib/content-store.ts`, `lib/species.ts` | Implemented (create, edit, filter, archive/restore with live `updateTag`) |
+| Manage park rules & lake zoning | `/admin/rules`, `lib/content-store.ts`, `lib/guidelines-data.ts` | Implemented (add, edit, reorder, remove, reset with live `updateTag`) |
+| Manage mailing list subscribers | `/admin/subscribers`, `lib/subscribers.ts` | Implemented (status toggle, tier filters, CSV export) |
+| Digital QR boarding pass & dock verifier | `/account`, `/verify`, `components/booking-qr-pass.tsx` | Implemented (`qrcode` ISO 18004 pass + dock verification page) |
+| Live lake weather & park map | `/api/weather`, `/advisories`, `/guidelines` | Implemented (Open-Meteo weather + OpenStreetMap jetty map) |
+| SRS & system design documentation | `docs/SRS.md`, `docs/SYSTEM_DESIGN.md`, `docs/figures/*` | Implemented |
 | Panel overview (pending queue, module counts) | `/admin`, `components/admin/admin-overview.tsx` | Implemented |
 | Loading and error boundaries | `app/admin/loading.tsx`, `app/admin/error.tsx` | Implemented |
 

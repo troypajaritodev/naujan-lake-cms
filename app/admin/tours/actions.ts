@@ -15,10 +15,12 @@
 
 import { updateTag } from "next/cache";
 import { readOverrides, updateOverrides } from "@/lib/content-store";
-import { cleanText } from "@/lib/sanitize";
+import { cleanText, slugify, toCleanLines } from "@/lib/sanitize";
 import {
   getToursForAdmin,
+  TOUR_IMAGE_OPTIONS,
   type TariffLine,
+  type Tour,
   type TourDifficulty,
 } from "@/lib/tours";
 
@@ -55,6 +57,26 @@ function rebalanceTariff(tariff: TariffLine[], target: number): TariffLine[] {
   return scaled;
 }
 
+function buildDefaultTariff(rate: number): TariffLine[] {
+  const entrance = Math.max(50, Math.round(rate * 0.2));
+  const boat = Math.round(rate * 0.55);
+  const guide = rate - entrance - boat;
+  return [
+    { label: "Park entrance & wetland conservation fee", amount: entrance },
+    { label: "Licensed local boat & operator share", amount: boat },
+    { label: "Accredited park guide & briefing logistics", amount: guide },
+  ];
+}
+
+function resolveTourImage(candidate: string): { image: string; imageAlt: string } {
+  const matched = TOUR_IMAGE_OPTIONS.find((option) => option.path === candidate);
+  if (matched) {
+    return { image: matched.path, imageAlt: matched.alt };
+  }
+  const fallback = TOUR_IMAGE_OPTIONS[0];
+  return { image: fallback.path, imageAlt: fallback.alt };
+}
+
 function wholeNumber(value: string): number | null {
   if (!/^\d+$/.test(value)) return null;
   const parsed = Number(value);
@@ -65,15 +87,25 @@ export async function saveTourAction(
   formData: FormData,
 ): Promise<TourActionResult> {
   const slug = field(formData, "slug", 72);
+  const mode = field(formData, "mode", 16);
+  const isCreate = mode === "create" || !slug;
+  const title = field(formData, "title", 90);
+  const category = field(formData, "category", 40) || "Eco-Tour";
   const summary = field(formData, "summary", 320);
   const duration = field(formData, "duration", 60);
   const departure = field(formData, "departure", 60);
   const difficulty = field(formData, "difficulty", 16) as TourDifficulty;
+  const rawImage = field(formData, "image", 120);
+  const inclusionsInput = cleanText(String(formData.get("inclusions") ?? ""), 1200);
   const rate = wholeNumber(field(formData, "ratePerPerson", 12));
   const capacity = wholeNumber(field(formData, "maxCapacity", 4));
 
-  if (!slug) {
-    return { ok: false, message: "Missing package." };
+  if (isCreate && title.length < 4) {
+    return {
+      ok: false,
+      field: "title",
+      message: "Give the package a clear title (at least 4 characters).",
+    };
   }
   if (rate === null || rate < 100 || rate > 50_000) {
     return {
@@ -106,13 +138,102 @@ export async function saveTourAction(
     };
   }
 
+  const tours = await getToursForAdmin();
+
+  if (isCreate) {
+    const newSlug = slugify(title, 64);
+    if (!newSlug) {
+      return {
+        ok: false,
+        field: "title",
+        message: "Use letters or numbers in the package title.",
+      };
+    }
+    if (tours.some((tour) => tour.slug === newSlug)) {
+      return {
+        ok: false,
+        field: "title",
+        message: `A package named “${newSlug}” already exists. Choose a distinct title.`,
+      };
+    }
+
+    const { image, imageAlt } = resolveTourImage(rawImage);
+    const parsedInclusions = toCleanLines(inclusionsInput, 10, 120);
+    const inclusions =
+      parsedInclusions.length > 0
+        ? parsedInclusions
+        : [
+            "Accredited park ranger or local guide",
+            "Park entrance and conservation fee",
+            "Life vests and shoreline safety briefing",
+          ];
+
+    const created: Tour = {
+      slug: newSlug,
+      title,
+      category,
+      summary,
+      duration,
+      departure,
+      ratePerPerson: rate,
+      maxCapacity: capacity,
+      difficulty,
+      inclusions,
+      image,
+      imageAlt,
+      itinerary: [
+        {
+          time: departure,
+          title: "Park jetty registration & safety check",
+          detail: "Confirm booking pass, fit life vests, and review zoning boundaries before departure.",
+        },
+        {
+          time: "Main session",
+          title: title,
+          detail: summary,
+        },
+        {
+          time: "Wrap-up",
+          title: "Return to jetty & catch-up briefing",
+          detail: "Disembark at the visitor dock and record observations with your guide.",
+        },
+      ],
+      tariff: buildDefaultTariff(rate),
+      bring: [
+        "Refillable water bottle (single-use plastic is restricted inside the park)",
+        "Sun protection, hat, and non-slip footwear",
+      ],
+      notes: [
+        "Departures remain subject to wind and advisory status on the morning of the trip.",
+      ],
+      speciesSlugs: [],
+    };
+
+    await updateOverrides((current) => ({
+      ...current,
+      tours: {
+        ...current.tours,
+        created: [created, ...current.tours.created],
+      },
+    }));
+
+    updateTag("tours");
+
+    return {
+      ok: true,
+      slug: newSlug,
+      message: `Created “${title}”. Visitors can now browse and inquire on /tours/${newSlug}.`,
+    };
+  }
+
   // Confirm the slug is a real package before storing a patch for it: an edit
   // against an unknown slug would sit in the file forever and never render.
-  const tours = await getToursForAdmin();
   const existing = tours.find((tour) => tour.slug === slug);
   if (!existing) {
     return { ok: false, message: "That package no longer exists." };
   }
+
+  const imageUpdate = rawImage ? resolveTourImage(rawImage) : {};
 
   await updateOverrides((current) => ({
     ...current,
@@ -121,14 +242,15 @@ export async function saveTourAction(
       edited: {
         ...current.tours.edited,
         [slug]: {
-          // Only the fields this screen owns. Everything else keeps coming from
-          // the base row.
+          ...(title.length >= 4 ? { title } : {}),
+          ...(category ? { category } : {}),
           ratePerPerson: rate,
           maxCapacity: capacity,
           duration,
           departure,
           difficulty,
           summary,
+          ...imageUpdate,
           // `existing` is the row with any earlier staff edits already applied,
           // so re-saving twice does not compound the rebalance.
           tariff: rebalanceTariff(existing.tariff, rate),
@@ -142,7 +264,7 @@ export async function saveTourAction(
   return {
     ok: true,
     slug,
-    message: `Saved “${existing.title}”. The public package page is live.`,
+    message: `Saved “${title.length >= 4 ? title : existing.title}”. The public package page is live.`,
   };
 }
 
@@ -187,6 +309,7 @@ export async function setTourPublishedAction(
 export async function countTourOverridesAction(): Promise<number> {
   const overrides = await readOverrides();
   return (
+    overrides.tours.created.length +
     Object.keys(overrides.tours.edited).length +
     overrides.tours.unpublished.length
   );

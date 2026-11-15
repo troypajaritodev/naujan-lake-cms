@@ -27,8 +27,8 @@ const perks = [
   },
   {
     icon: ShieldCheck,
-    title: "Park-office only",
-    body: "No card details are collected here — fees settle on site.",
+    title: "Track every step",
+    body: "Follow your booking & first payment from Pending to On Process and Confirmed.",
   },
 ];
 
@@ -67,7 +67,7 @@ export function AuthShell({
 
             <div className="relative">
               <div className="flex items-center gap-3">
-                <BrandMark className="size-10 bg-white/10 backdrop-blur-md" />
+                <BrandMark className="size-11 ring-white/25" />
                 <span className="text-[10px] font-medium tracking-[0.26em] text-sand-300/80 uppercase">
                   Visitor account
                 </span>

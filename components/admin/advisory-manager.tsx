@@ -30,6 +30,7 @@ import {
   setAdvisoryArchivedAction,
 } from "@/app/admin/advisories/actions";
 import type { Advisory, AdvisorySeverity } from "@/lib/advisories";
+import { useSubscribers } from "@/lib/subscribers";
 
 const MONTHS = [
   "Jan",
@@ -138,6 +139,13 @@ export default function AdvisoryManager({
   const [draft, setDraft] = useState<Draft | null>(null);
   const [notice, setNotice] = useState<Notice | null>(null);
   const [pending, startTransition] = useTransition();
+  const subscribers = useSubscribers();
+  const advisoryRecipients = subscribers
+    .filter(
+      (entry) =>
+        entry.status === "ACTIVE" && entry.topics.includes("advisories"),
+    )
+    .map((entry) => entry.email);
 
   function openCreate() {
     setNotice(null);
@@ -229,6 +237,11 @@ export default function AdvisoryManager({
             className="space-y-5 px-5 py-5"
           >
             <input type="hidden" name="slug" value={draft.slug} />
+            <input
+              type="hidden"
+              name="recipients"
+              value={advisoryRecipients.join(",")}
+            />
 
             <div>
               <label htmlFor="advisory-title" className={labelClass}>
@@ -366,6 +379,21 @@ export default function AdvisoryManager({
                 <span className="font-semibold text-ink">Pin to the site-wide banner.</span>{" "}
                 Shown above every public page until you unpin it. A critical notice is
                 picked up automatically even when nothing is pinned.
+              </span>
+            </label>
+
+            <label className="flex items-start gap-3 rounded-xl bg-lake-50/70 px-4 py-3 ring-1 ring-lake-600/20 ring-inset">
+              <input
+                type="checkbox"
+                name="dispatchSubscribers"
+                defaultChecked={!draft.slug && draft.severity === "CRITICAL"}
+                className="mt-0.5 size-4 shrink-0 accent-lake-700"
+              />
+              <span className="text-[12.5px] leading-relaxed text-ink-soft/80">
+                <span className="font-semibold text-ink">
+                  Dispatch email alert to advisory subscribers ({advisoryRecipients.length} active).
+                </span>{" "}
+                Sends this notice via Resend when configured (or prints the digest payload in demo mode).
               </span>
             </label>
 

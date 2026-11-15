@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import {
@@ -80,6 +81,7 @@ export async function generateMetadata({
     openGraph: {
       title: `${title} · Naujan Lake National Park`,
       description: entry.description,
+      ...(entry.photo ? { images: [{ url: entry.photo.src, alt: entry.photo.alt }] } : {}),
     },
   };
 }
@@ -124,30 +126,78 @@ export default async function SpeciesPage({ params }: SpeciesPageProps) {
             Wildlife catalogue
           </Link>
 
-          <div className="mt-6 flex flex-wrap items-center gap-2">
-            <span className="rounded-full bg-white/10 px-3 py-1 text-[10.5px] font-semibold tracking-[0.14em] text-sand-100 uppercase ring-1 ring-white/15 ring-inset">
-              {group?.name ?? "Wildlife"}
-            </span>
-            <span
-              className={`rounded-full px-3 py-1 text-[10.5px] font-semibold tracking-[0.14em] uppercase ring-1 ring-inset ${statusStyles[entry.status]}`}
-            >
-              {entry.status} · {conservationLabels[entry.status]}
-            </span>
+          <div className="mt-8 grid gap-10 lg:grid-cols-12 lg:items-center">
+            <div className="lg:col-span-7">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="rounded-full bg-white/10 px-3 py-1 text-[10.5px] font-semibold tracking-[0.14em] text-sand-100 uppercase ring-1 ring-white/15 ring-inset">
+                  {group?.name ?? "Wildlife"}
+                </span>
+                <span
+                  className={`rounded-full px-3 py-1 text-[10.5px] font-semibold tracking-[0.14em] uppercase ring-1 ring-inset ${statusStyles[entry.status]}`}
+                >
+                  {entry.status} · {conservationLabels[entry.status]}
+                </span>
+              </div>
+
+              <h1 className="mt-5 font-display text-[clamp(2.2rem,5vw,3.6rem)] leading-[1.02] font-light tracking-[-0.02em] text-sand-50">
+                {entry.commonName}
+              </h1>
+
+              <p className="mt-3 text-[16px] text-sand-200/80 italic">
+                {entry.scientificName}
+              </p>
+
+              {entry.localName ? (
+                <p className="mt-2 text-[13px] text-sand-300/70">
+                  Local name ·{" "}
+                  <span className="text-sand-100">{entry.localName}</span>
+                </p>
+              ) : null}
+            </div>
+
+            {entry.photo ? (
+              <figure className="lg:col-span-5">
+                <div className="relative aspect-[4/3] overflow-hidden rounded-2xl bg-white/5 ring-1 ring-white/15">
+                  <Image
+                    src={entry.photo.src}
+                    alt={entry.photo.alt}
+                    fill
+                    priority
+                    sizes="(max-width: 1024px) 100vw, 40vw"
+                    className="object-cover"
+                  />
+                </div>
+                <figcaption className="mt-3 text-[11px] leading-relaxed text-sand-300/65">
+                  Illustrative photograph — not a Naujan Lake field record. By{" "}
+                  <a
+                    href={entry.photo.sourceUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-sand-100 underline underline-offset-2 hover:text-white"
+                  >
+                    {entry.photo.credit}
+                  </a>{" "}
+                  ·{" "}
+                  <a
+                    href={entry.photo.licenseUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-sand-100 underline underline-offset-2 hover:text-white"
+                  >
+                    {entry.photo.license}
+                  </a>
+                  .{" "}
+                  <a
+                    href="/images/CREDITS.md"
+                    className="underline underline-offset-2 hover:text-white"
+                  >
+                    All image credits
+                  </a>
+                  .
+                </figcaption>
+              </figure>
+            ) : null}
           </div>
-
-          <h1 className="mt-5 font-display text-[clamp(2.2rem,5vw,3.6rem)] leading-[1.02] font-light tracking-[-0.02em] text-sand-50">
-            {entry.commonName}
-          </h1>
-
-          <p className="mt-3 text-[16px] text-sand-200/80 italic">
-            {entry.scientificName}
-          </p>
-
-          {entry.localName ? (
-            <p className="mt-2 text-[13px] text-sand-300/70">
-              Local name · <span className="text-sand-100">{entry.localName}</span>
-            </p>
-          ) : null}
         </div>
       </section>
 
@@ -239,8 +289,20 @@ export default async function SpeciesPage({ params }: SpeciesPageProps) {
                 <li key={candidate.slug}>
                   <Link
                     href={`/wildlife/${candidate.slug}`}
-                    className="group flex h-full flex-col rounded-2xl bg-white p-5 ring-1 ring-ink/8 transition-shadow duration-300 hover:ring-ink/16"
+                    className="group flex h-full flex-col overflow-hidden rounded-2xl bg-white ring-1 ring-ink/8 transition-shadow duration-300 hover:ring-ink/16"
                   >
+                    {candidate.photo ? (
+                      <div className="relative aspect-[16/10] w-full overflow-hidden bg-sand-100">
+                        <Image
+                          src={candidate.photo.src}
+                          alt={candidate.photo.alt}
+                          fill
+                          sizes="(max-width: 640px) 100vw, (max-width: 1280px) 50vw, 25vw"
+                          className="object-cover transition-transform duration-500 group-hover:scale-[1.04]"
+                        />
+                      </div>
+                    ) : null}
+                    <div className="flex flex-1 flex-col p-5">
                     <div className="flex items-start justify-between gap-2">
                       <h3 className="text-[14.5px] leading-snug font-medium text-ink">
                         {candidate.commonName}
@@ -260,6 +322,7 @@ export default async function SpeciesPage({ params }: SpeciesPageProps) {
                     <span className="mt-auto pt-4 text-[11.5px] font-semibold text-lake-800">
                       View record →
                     </span>
+                    </div>
                   </Link>
                 </li>
               ))}

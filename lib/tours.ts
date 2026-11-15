@@ -15,48 +15,23 @@ import {
 } from "@/lib/content-store";
 import { getSupabaseClient, type Tables } from "@/lib/supabase";
 import { fetchOrFallback, queryError } from "@/lib/supabase/query";
+import {
+  difficultyLabel,
+  IMAGE_ALT,
+  TOUR_IMAGE_OPTIONS,
+  type ItineraryStop,
+  type TariffLine,
+  type Tour,
+  type TourDifficulty,
+} from "@/lib/tours-meta";
 
-export type TourDifficulty = "EASY" | "MODERATE" | "CHALLENGING";
-
-export type ItineraryStop = {
-  time: string;
-  title: string;
-  detail: string;
-};
-
-export type TariffLine = {
-  label: string;
-  amount: number;
-};
-
-export type Tour = {
-  slug: string;
-  title: string;
-  category: string;
-  summary: string;
-  duration: string;
-  departure: string;
-  ratePerPerson: number;
-  maxCapacity: number;
-  difficulty: TourDifficulty;
-  inclusions: string[];
-  image: string;
-  imageAlt: string;
-  itinerary: ItineraryStop[];
-  tariff: TariffLine[];
-  bring: string[];
-  notes: string[];
-  /**
-   * Species slugs the package is built around (FR-1.3). Read from
-   * `tours.species_slugs` when Supabase is configured.
-   */
-  speciesSlugs: string[];
-};
-
-export const difficultyLabel: Record<TourDifficulty, string> = {
-  EASY: "Easy",
-  MODERATE: "Moderate",
-  CHALLENGING: "Challenging",
+export {
+  difficultyLabel,
+  TOUR_IMAGE_OPTIONS,
+  type ItineraryStop,
+  type TariffLine,
+  type Tour,
+  type TourDifficulty,
 };
 
 const seedTours: Tour[] = [
@@ -136,8 +111,9 @@ const seedTours: Tour[] = [
     maxCapacity: 8,
     difficulty: "EASY",
     inclusions: ["Boat and operator", "Life jacket", "Environmental fee"],
-    image: "/images/hero-lake.jpg",
-    imageAlt: "Open water and distant mountains under a wide sky at Naujan Lake",
+    image: "/images/tours/sunrise-boat-tour.jpg",
+    imageAlt:
+      "Traditional wooden outrigger bangka boat gliding across golden sunrise reflections on Naujan Lake",
     itinerary: [
       {
         time: "05:00",
@@ -187,8 +163,9 @@ const seedTours: Tour[] = [
     maxCapacity: 4,
     difficulty: "MODERATE",
     inclusions: ["Homestay", "All meals", "Village guide", "Environmental fee"],
-    image: "/images/shoreline.jpg",
-    imageAlt: "Shoreline vegetation and quiet water along Naujan Lake",
+    image: "/images/tours/lakeside-community-homestay.jpg",
+    imageAlt:
+      "Bamboo and nipa stilt homestay cottage and wooden pier overlooking calm morning water at Naujan Lake",
     itinerary: [
       {
         time: "Day 1 · 14:00",
@@ -244,8 +221,9 @@ const seedTours: Tour[] = [
     maxCapacity: 15,
     difficulty: "CHALLENGING",
     inclusions: ["Research guide", "Field sheets", "Boat transfer", "Environmental fee"],
-    image: "/images/lake-canopy.jpg",
-    imageAlt: "Dense shoreline canopy meeting the water at Naujan Lake",
+    image: "/images/tours/educational-research-trek.jpg",
+    imageAlt:
+      "Wooden nature boardwalk curving alongside tall wetland reeds and freshwater mangroves on Naujan Lake",
     itinerary: [
       {
         time: "06:00",
@@ -307,16 +285,7 @@ export function tariffTotal(tour: Tour): number {
  * Alt text for the packages that ship with a photograph. Uploaded images get a
  * generic description until the CMS stores a per-image caption (FR-1.2).
  */
-const IMAGE_ALT: Record<string, string> = {
-  "/images/ducklings.jpg":
-    "Philippine Duck and ducklings in shallow wetland water",
-  "/images/hero-lake.jpg":
-    "Open water and distant mountains under a wide sky at Naujan Lake",
-  "/images/shoreline.jpg":
-    "Shoreline vegetation and quiet water along Naujan Lake",
-  "/images/lake-canopy.jpg":
-    "Dense shoreline canopy meeting the water at Naujan Lake",
-};
+/* Image alt text dictionary imported from `@/lib/tours-meta` (`IMAGE_ALT`). */
 
 function toItinerary(value: unknown): ItineraryStop[] {
   if (!Array.isArray(value)) return [];

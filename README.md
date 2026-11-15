@@ -24,15 +24,7 @@ npm run db:status  # check the Supabase schema and key
 
 ## Status
 
-Phase 1 (public portal) and Phase 2 (admin shell) are implemented. Phase 3 is in
-progress: the Supabase read layer, the site-wide advisory banner, species
-records with search and filters, related tours, inquiry emails, baseline
-security and a WCAG notes pass have shipped; admin CRUD, Supabase Auth and the
-RLS verification are next. The per-use-case status table lives in
-[`docs/PRD.md` §12.4](./docs/PRD.md#124-implementation-status), and
-[`docs/BACKEND_STATUS.md`](./docs/BACKEND_STATUS.md) tracks the live
-backend/database checklist. [`docs/DEPLOYMENT.md`](./docs/DEPLOYMENT.md) has
-the Vercel steps and the demo-versus-live notes.
+Phase 1 (public portal), Phase 2 (admin shell), and all Admin CMS modules (`/admin/users`, `/admin/inquiries`, `/admin/subscribers`, `/admin/advisories`, `/admin/tours`, `/admin/species`, `/admin/rules`) are implemented, along with booking first-payment tracking, visitor–park messaging, QR boarding passes (`/verify`), live weather (`/api/weather`), interactive lake zoning map (`/guidelines`), and formal capstone documentation (`docs/SRS.md`, `docs/SYSTEM_DESIGN.md`). Remaining items in Milestone 4/backend setup (`supabase/schema.sql` execution, Supabase Auth, and live Resend credentials) are tracked in [`docs/BACKEND_STATUS.md`](./docs/BACKEND_STATUS.md) and [`docs/PRD.md` §12.4](./docs/PRD.md#124-implementation-status). [`docs/DEPLOYMENT.md`](./docs/DEPLOYMENT.md) has the Vercel steps and demo-versus-live notes.
 
 No database or `.env.local` is required to run the site — see *Data layer* below.
 
@@ -58,7 +50,7 @@ database: that is demo mode.
 | `lib/species.ts` | `categories`, `species` | seed catalogue in the same file |
 | `lib/tours.ts` | `tours` (active rows only) | seed packages in the same file |
 | `lib/advisories.ts` | `advisories` (published rows only) | seed notices in the same file |
-| `lib/guidelines.ts` | — | static copy (no table yet) |
+| `lib/guidelines.ts` / `lib/guidelines-data.ts` | — | static rules/zones + `.data/content.json` CMS overrides |
 | `lib/inquiries.ts` | `tour_inquiries` (planned, needs auth) | `localStorage` demo store |
 | `lib/subscribers.ts` | `subscribers` (planned, needs auth) | `localStorage` demo store |
 

@@ -26,9 +26,14 @@ do $$ begin create type public.user_role as enum ('admin', 'visitor'); exception
 do $$ begin create type public.conservation_status as enum ('CR', 'EN', 'VU', 'NT', 'LC', 'DD'); exception when duplicate_object then null; end $$;
 do $$ begin create type public.seasonality as enum ('RESIDENT', 'MIGRATORY', 'SEASONAL'); exception when duplicate_object then null; end $$;
 do $$ begin create type public.tour_difficulty as enum ('EASY', 'MODERATE', 'CHALLENGING'); exception when duplicate_object then null; end $$;
-do $$ begin create type public.inquiry_status as enum ('PENDING', 'CONTACTED', 'CONFIRMED', 'DECLINED', 'CANCELLED'); exception when duplicate_object then null; end $$;
--- Existing databases pick up the new terminal state without a rebuild.
-do $$ begin alter type public.inquiry_status add value 'CANCELLED'; exception when duplicate_object then null; end $$;
+do $$ begin create type public.inquiry_status as enum ('PENDING', 'ON_PROCESS', 'CONTACTED', 'CONFIRMED', 'COMPLETED', 'DECLINED', 'CANCELLED'); exception when duplicate_object then null; end $$;
+-- Existing databases pick up the new workflow states without a rebuild.
+do $$ begin alter type public.inquiry_status add value if not exists 'ON_PROCESS'; exception when duplicate_object then null; end $$;
+do $$ begin alter type public.inquiry_status add value if not exists 'COMPLETED'; exception when duplicate_object then null; end $$;
+do $$ begin alter type public.inquiry_status add value if not exists 'CANCELLED'; exception when duplicate_object then null; end $$;
+do $$ begin create type public.payment_method as enum ('GCASH', 'MAYA', 'BANK_TRANSFER', 'ON_SITE_CASH'); exception when duplicate_object then null; end $$;
+do $$ begin alter type public.payment_method add value if not exists 'ON_SITE_CASH'; exception when duplicate_object then null; end $$;
+do $$ begin create type public.payment_status as enum ('UNPAID', 'PENDING_VERIFICATION', 'VERIFIED', 'REFUNDED'); exception when duplicate_object then null; end $$;
 do $$ begin create type public.advisory_severity as enum ('CRITICAL', 'WARNING', 'INFO'); exception when duplicate_object then null; end $$;
 do $$ begin create type public.subscriber_status as enum ('ACTIVE', 'UNSUBSCRIBED'); exception when duplicate_object then null; end $$;
 
@@ -116,27 +121,59 @@ comment on column public.tours.species_slugs is 'FR-1.3: species slugs (public.s
 alter table public.tours
   add column if not exists species_slugs text[] not null default '{}';
 
--- 2.5 tour_inquiries — booking requests (FR-2.3)
+-- 2.5 tour_inquiries — booking requests & first payment tracking (FR-2.3)
 create table if not exists public.tour_inquiries (
-  id             uuid primary key default gen_random_uuid(),
-  reference_code text not null unique,
-  tour_id        uuid not null references public.tours (id) on delete restrict,
-  user_id        uuid references public.users (id) on delete set null,
-  full_name      text not null,
-  email          text not null,
-  phone          text,
-  target_date    date not null,
-  party_size     integer not null check (party_size between 1 and 60),
-  notes          text,
-  status         public.inquiry_status not null default 'PENDING',
-  confirmed_at   timestamptz,
-  cancelled_at   timestamptz,
-  decided_by     text check (decided_by in ('visitor', 'park')),
-  created_at     timestamptz not null default now(),
-  updated_at     timestamptz not null default now(),
+  id                   uuid primary key default gen_random_uuid(),
+  reference_code       text not null unique,
+  tour_id              uuid not null references public.tours (id) on delete restrict,
+  user_id              uuid references public.users (id) on delete set null,
+  full_name            text not null,
+  email                text not null,
+  phone                text,
+  target_date          date not null,
+  party_size           integer not null check (party_size between 1 and 60),
+  notes                text,
+  status               public.inquiry_status not null default 'PENDING',
+  on_process_at        timestamptz,
+  confirmed_at         timestamptz,
+  completed_at         timestamptz,
+  cancelled_at         timestamptz,
+  decided_by           text check (decided_by in ('visitor', 'park')),
+  rate_per_person      numeric(10, 2) not null default 0,
+  total_amount         numeric(10, 2) not null default 0,
+  first_payment_amount numeric(10, 2) not null default 0,
+  balance_amount       numeric(10, 2) not null default 0,
+  payment_method       public.payment_method,
+  payment_reference    text,
+  payment_account_name text,
+  payment_status       public.payment_status not null default 'UNPAID',
+  payment_submitted_at timestamptz,
+  payment_verified_at  timestamptz,
+  admin_note           text,
+  timeline             jsonb not null default '[]'::jsonb,
+  messages             jsonb not null default '[]'::jsonb,
+  created_at           timestamptz not null default now(),
+  updated_at           timestamptz not null default now(),
   constraint tour_inquiries_email_format
     check (email ~* '^[^@[:space:]]+@[^@[:space:]]+\.[^@[:space:]]{2,}$')
 );
+
+alter table public.tour_inquiries
+  add column if not exists on_process_at        timestamptz,
+  add column if not exists completed_at         timestamptz,
+  add column if not exists rate_per_person      numeric(10, 2) not null default 0,
+  add column if not exists total_amount         numeric(10, 2) not null default 0,
+  add column if not exists first_payment_amount numeric(10, 2) not null default 0,
+  add column if not exists balance_amount       numeric(10, 2) not null default 0,
+  add column if not exists payment_method       public.payment_method,
+  add column if not exists payment_reference    text,
+  add column if not exists payment_account_name text,
+  add column if not exists payment_status       public.payment_status not null default 'UNPAID',
+  add column if not exists payment_submitted_at timestamptz,
+  add column if not exists payment_verified_at  timestamptz,
+  add column if not exists admin_note           text,
+  add column if not exists timeline             jsonb not null default '[]'::jsonb,
+  add column if not exists messages             jsonb not null default '[]'::jsonb;
 
 -- 2.6 advisories — park announcements (Module 4)
 create table if not exists public.advisories (
@@ -145,12 +182,36 @@ create table if not exists public.advisories (
   title           text not null,
   slug            text not null unique,
   severity        public.advisory_severity not null,
+  category        text not null default 'Operations',
   excerpt         text not null,
   content         text not null,
+  effective_until date,
+  actions         text[] not null default '{}',
   is_active_banner boolean not null default false,
   published_at    timestamptz not null default now(),
-  created_at      timestamptz not null default now()
+  created_at      timestamptz not null default now(),
+  updated_at      timestamptz not null default now()
 );
+
+-- Projects created before the advisory CMS columns need them added in place;
+-- the create table above only covers a fresh database.
+alter table public.advisories
+  add column if not exists category        text not null default 'Operations',
+  add column if not exists effective_until date,
+  add column if not exists actions         text[] not null default '{}',
+  add column if not exists updated_at      timestamptz not null default now();
+
+-- The form posts one of four fixed categories; keep the column honest without
+-- introducing an enum that would need a migration to extend.
+do $$ begin
+  alter table public.advisories
+    add constraint advisories_category_check
+    check (category in ('Wildlife', 'Water', 'Access', 'Operations'));
+exception when duplicate_object then null; end $$;
+
+comment on column public.advisories.category is 'CMS grouping: Wildlife, Water, Access or Operations.';
+comment on column public.advisories.effective_until is 'Last day the notice applies; NULL means open-ended.';
+comment on column public.advisories.actions is 'Concrete instructions shown as a checklist on the detail page.';
 
 -- 2.7 subscribers — newsletter audience (Module 6)
 create table if not exists public.subscribers (
@@ -178,6 +239,7 @@ create index if not exists inquiries_created_idx       on public.tour_inquiries 
 create index if not exists inquiries_target_date_idx   on public.tour_inquiries (target_date);
 create index if not exists advisories_published_idx    on public.advisories (published_at desc);
 create index if not exists advisories_severity_idx     on public.advisories (severity);
+create index if not exists advisories_category_idx     on public.advisories (category);
 create index if not exists users_role_idx              on public.users (role);
 create index if not exists subscribers_status_idx      on public.subscribers (status);
 
@@ -207,6 +269,11 @@ create trigger tours_touch_updated_at
 drop trigger if exists inquiries_touch_updated_at on public.tour_inquiries;
 create trigger inquiries_touch_updated_at
   before update on public.tour_inquiries
+  for each row execute function public.touch_updated_at();
+
+drop trigger if exists advisories_touch_updated_at on public.advisories;
+create trigger advisories_touch_updated_at
+  before update on public.advisories
   for each row execute function public.touch_updated_at();
 
 -- ---------------------------------------------------------------------------
@@ -294,7 +361,24 @@ create policy inquiries_select_own on public.tour_inquiries
 
 drop policy if exists inquiries_admin_update on public.tour_inquiries;
 create policy inquiries_admin_update on public.tour_inquiries
-  for update using (public.is_admin()) with check (public.is_admin());
+  for update using (
+    public.is_admin()
+    or user_id = auth.uid()
+    or lower(email) = lower(coalesce(auth.jwt() ->> 'email', ''))
+  )
+  with check (
+    public.is_admin()
+    or user_id = auth.uid()
+    or lower(email) = lower(coalesce(auth.jwt() ->> 'email', ''))
+  );
+
+drop policy if exists inquiries_delete_own on public.tour_inquiries;
+create policy inquiries_delete_own on public.tour_inquiries
+  for delete using (
+    public.is_admin()
+    or user_id = auth.uid()
+    or lower(email) = lower(coalesce(auth.jwt() ->> 'email', ''))
+  );
 
 -- newsletter: anyone may subscribe, only staff may read the audience
 drop policy if exists subscribers_insert on public.subscribers;
@@ -329,127 +413,192 @@ values
   ('c1000000-0000-4000-8000-000000000005', 'Wetland Flora', 'wetland-flora', 'Reeds, lilies and submerged vegetation.', 5)
 on conflict (slug) do nothing;
 
+-- Species catalogue — mirrors lib/species.ts (18 records). `featured_image`
+-- points at the park photography already shipped in /public; the per-species
+-- gallery is a later FR-1.2 milestone.
+insert into public.species
+  (category_id, common_name, local_name, scientific_name, conservation_status,
+   seasonality, habitat, description, featured_image, slug)
+values
+  ('c1000000-0000-4000-8000-000000000001', 'Philippine duck', 'Papan', 'Anas luzonica', 'VU', 'RESIDENT', 'Shallow lake margins and flooded grassland', 'A Philippine endemic and the park''s flagship waterbird. Pairs nest in the reeds on the eastern shore; the lake holds one of the few stable populations left in Mindoro.', '/images/species/philippine-duck.webp', 'philippine-duck'),
+  ('c1000000-0000-4000-8000-000000000001', 'Little egret', 'Tagak', 'Egretta garzetta', 'LC', 'MIGRATORY', 'Mudflats, fishpond edges and the river mouths', 'Arrives with the northeast monsoon and hunts by shuffling its feet to flush small fish. The white flocks on the northern flats from November onward are mostly this species.', '/images/species/little-egret.webp', 'little-egret'),
+  ('c1000000-0000-4000-8000-000000000001', 'Purple heron', null, 'Ardea purpurea', 'LC', 'RESIDENT', 'Tall reed beds and densely vegetated marsh', 'Secretive and easily overlooked — it freezes with its neck vertical when a boat approaches. Best located by its harsh, grating call at dawn.', '/images/species/purple-heron.webp', 'purple-heron'),
+  ('c1000000-0000-4000-8000-000000000001', 'Wandering whistling duck', null, 'Dendrocygna arcuata', 'LC', 'RESIDENT', 'Open water and floating vegetation beds', 'Highly gregarious, often counted in flocks of fifty or more. The whistling call carries across the lake well before the birds are visible.', '/images/species/wandering-whistling-duck.webp', 'wandering-whistling-duck'),
+  ('c1000000-0000-4000-8000-000000000001', 'Great egret', null, 'Ardea alba', 'LC', 'MIGRATORY', 'Open shallows and drained fishponds', 'The largest white heron on the lake. A winter visitor that arrives thin after the flight from East Asia and spends the first weeks feeding almost continuously.', '/images/species/great-egret.webp', 'great-egret'),
+  ('c1000000-0000-4000-8000-000000000002', 'Milkfish', 'Bangus', 'Chanos chanos', 'LC', 'SEASONAL', 'Lake shallows, river mouths and brackish outlets', 'Runs into the lake from coastal waters and is the mainstay of lakeside aquaculture. Juveniles shelter in the flooded margins before returning downstream.', '/images/species/milkfish.webp', 'milkfish'),
+  ('c1000000-0000-4000-8000-000000000002', 'Mudfish', 'Dalag', 'Channa striata', 'LC', 'RESIDENT', 'Slow water, mud bottoms and flooded grass', 'An obligate air-breather, which is how it survives the low-oxygen shallows in the dry season. A staple of the local catch and a favourite of herons.', '/images/species/mudfish.webp', 'mudfish'),
+  ('c1000000-0000-4000-8000-000000000002', 'Nile tilapia', null, 'Oreochromis niloticus', 'LC', 'RESIDENT', 'Open water and warm shallows', 'Introduced and now widespread. Included here because it is what most visitors actually see at the boat landing — and because it competes with native species for nesting cover.', '/images/species/nile-tilapia.webp', 'nile-tilapia'),
+  ('c1000000-0000-4000-8000-000000000002', 'Flathead goby', 'Biya', 'Glossogobius giuris', 'LC', 'RESIDENT', 'Sand and gravel runs near the inlets', 'A small, bottom-dwelling native that sits motionless on the substrate. Common in the clear water where the eastern streams enter the lake.', '/images/species/flathead-goby.webp', 'flathead-goby'),
+  ('c1000000-0000-4000-8000-000000000003', 'Common green frog', 'Palaka', 'Hoplobatrachus rugulosus', 'LC', 'RESIDENT', 'Flooded grass and the marsh edge', 'The loudest voice on the lake after heavy rain. Choruses start within an hour of the first downpour and continue well into the night.', '/images/species/common-green-frog.webp', 'common-green-frog'),
+  ('c1000000-0000-4000-8000-000000000003', 'Water monitor', 'Bayawak', 'Varanus salvator', 'LC', 'RESIDENT', 'Shoreline forest, marsh edge and floating logs', 'Regularly seen swimming between the reed beds. Despite the size, it avoids boats and is more often heard crashing into the water than watched.', '/images/species/water-monitor.webp', 'water-monitor'),
+  ('c1000000-0000-4000-8000-000000000003', 'Many-lined sun skink', null, 'Eutropis multifasciata', 'LC', 'RESIDENT', 'Dry banks, paths and cleared ground', 'The small brown lizard on every sunlit track. Fast, common, and the main reason the park asks visitors to keep to marked paths.', '/images/species/common-sunken-eyed-skink.webp', 'common-sunken-eyed-skink'),
+  ('c1000000-0000-4000-8000-000000000004', 'Large flying fox', 'Kabag', 'Pteropus vampyrus', 'EN', 'RESIDENT', 'Remaining lowland forest along the shoreline', 'A fruit bat with a two-metre wingspan that commutes over the lake at dusk. Roost trees are the limiting factor, which is why the shoreline forest is closed to clearing.', '/images/species/large-flying-fox.webp', 'large-flying-fox'),
+  ('c1000000-0000-4000-8000-000000000004', 'Common fruit bat', null, 'Rousettus amplexicaudatus', 'LC', 'RESIDENT', 'Caves and dense shoreline trees', 'The smaller, more numerous fruit bat of the lakeside. Unlike the insect-eating bats it is easily seen at dusk, flying a direct line rather than fluttering.', '/images/species/common-fruit-bat.webp', 'common-fruit-bat'),
+  ('c1000000-0000-4000-8000-000000000005', 'Blue water lily', 'Lawa-lawaan', 'Nymphaea nouchali', 'LC', 'RESIDENT', 'Still, shallow water over mud', 'Opens in the morning and closes by early afternoon. The floating leaves are the platform small frogs and insects use to cross open water.', '/images/species/blue-water-lily.webp', 'blue-water-lily'),
+  ('c1000000-0000-4000-8000-000000000005', 'Common reed', 'Tambô', 'Phragmites australis', 'LC', 'RESIDENT', 'Lake margin and the eastern marsh', 'Forms the tall wall of vegetation that makes the eastern marsh impassable by boat. It is also the nesting cover that keeps the Philippine duck population viable.', '/images/species/common-reed.webp', 'common-reed'),
+  ('c1000000-0000-4000-8000-000000000005', 'Water hyacinth', null, 'Eichhornia crassipes', 'LC', 'SEASONAL', 'Nutrient-rich shallows and slow inlets', 'An introduced floating plant that mats over sheltered water in the wet season. The park office clears it from access channels before each tour season.', '/images/species/water-hyacinth.webp', 'water-hyacinth'),
+  ('c1000000-0000-4000-8000-000000000005', 'Freshwater mangrove', 'Putat', 'Barringtonia racemosa', 'LC', 'RESIDENT', 'Waterlogged banks and the lake edge', 'Leans out over the water with its roots in the flood line. The pendulous pink flower spikes are the easiest way to identify it from a boat.', '/images/species/freshwater-mangrove.webp', 'freshwater-mangrove')
+on conflict (slug) do nothing;
+
 insert into public.tours
   (id, title, slug, category, summary, duration, departure, rate_per_person, max_capacity,
    difficulty, inclusions, what_to_bring, notes, species_slugs, itinerary, tariff, featured_image)
 values
-  ('t1000000-0000-4000-8000-000000000001', 'Guided birdwatching expedition', 'guided-birdwatching-expedition',
+  ('e1000000-0000-4000-8000-000000000001', 'Guided birdwatching expedition', 'guided-birdwatching-expedition',
    'Birdwatching',
    'A slow morning run along the marsh edge with a trained spotter, timed to the migratory season and the tide.',
    '3–4 hours', '05:30, park jetty', 1850, 6, 'EASY',
    array['Licensed guide', 'Life jacket', 'Binoculars', 'Environmental fee'],
    array['Neutral-coloured clothing', 'Sun hat and rain shell', 'Reusable water bottle', 'Insect repellent'],
    array['Best between October and March, when migratory species are present.'],
+   array['philippine-duck', 'little-egret', 'purple-heron', 'wandering-whistling-duck', 'great-egret'],
    '[{"time":"05:30","title":"Briefing at the jetty","detail":"Life jackets fitted and nesting-season rules."}]'::jsonb,
    '[{"label":"Boat rental and operator","amount":700},{"label":"Licensed birding guide","amount":600},{"label":"Environmental fee","amount":300},{"label":"Binocular hire","amount":250}]'::jsonb,
-   array['philippine-duck', 'little-egret', 'purple-heron', 'wandering-whistling-duck', 'great-egret'],
    '/images/ducklings.jpg'),
-  ('t1000000-0000-4000-8000-000000000002', 'Sunrise boat tour', 'sunrise-boat-tour',
+  ('e1000000-0000-4000-8000-000000000002', 'Sunrise boat tour', 'sunrise-boat-tour',
    'Scenic',
    'Out before the light, back before the heat. The classic first look at the lake and the mountains behind it.',
    '2 hours', '05:00, park jetty', 1200, 8, 'EASY',
    array['Boat and operator', 'Life jacket', 'Environmental fee'],
    array['Light jacket', 'Camera', 'Reusable water bottle'],
    array['Departs strictly at 05:00 — late arrivals cannot be waited for.'],
+   array['blue-water-lily', 'common-reed'],
    '[{"time":"05:00","title":"Departure","detail":"Board at the park jetty while the water is still flat."}]'::jsonb,
    '[{"label":"Boat rental and operator","amount":700},{"label":"Fuel and crew","amount":200},{"label":"Environmental fee","amount":300}]'::jsonb,
-   array['blue-water-lily', 'common-reed'],
-   '/images/hero-lake.jpg'),
-  ('t1000000-0000-4000-8000-000000000003', 'Lakeside community homestay', 'lakeside-community-homestay',
+   '/images/tours/sunrise-boat-tour.jpg'),
+  ('e1000000-0000-4000-8000-000000000003', 'Lakeside community homestay', 'lakeside-community-homestay',
    'Cultural',
    'An overnight with a host family in a lakeside barangay — fishing stories, local cooking, and a dawn paddle.',
    '2 days, 1 night', '14:00, barangay hall', 2400, 4, 'MODERATE',
    array['Homestay', 'All meals', 'Village guide', 'Environmental fee'],
    array['Modest, comfortable clothing', 'Sleeping clothes and towel', 'Refillable water bottle', 'Cash for local purchases'],
    array['Accommodation is basic — shared bathroom, fan-cooled room.'],
+   array['milkfish', 'mudfish', 'nile-tilapia'],
    '[{"time":"Day 1 · 14:00","title":"Arrival and orientation","detail":"Meet the host family and the barangay guide."}]'::jsonb,
    '[{"label":"Homestay (per night)","amount":900},{"label":"Meals (4)","amount":700},{"label":"Village guide","amount":500},{"label":"Environmental fee","amount":300}]'::jsonb,
-   array['milkfish', 'mudfish', 'nile-tilapia'],
-   '/images/shoreline.jpg'),
-  ('t1000000-0000-4000-8000-000000000004', 'Educational research trek', 'educational-research-trek',
+   '/images/tours/lakeside-community-homestay.jpg'),
+  ('e1000000-0000-4000-8000-000000000004', 'Educational research trek', 'educational-research-trek',
    'Research',
    'A field session for student groups: transect walks, water sampling points and an introduction to wetland survey methods.',
    '6 hours', '06:00, park office', 1500, 15, 'CHALLENGING',
    array['Research guide', 'Field sheets', 'Boat transfer', 'Environmental fee'],
    array['Closed shoes with grip', 'Long trousers', 'Field notebook and pencil', 'Waterproof bag for devices'],
    array['Group bookings only, minimum of 8 participants.'],
-   '[{"time":"06:00","title":"Safety briefing and method overview","detail":"Survey ethics, permits and data use."}]'::jsonb,
-   '[{"label":"Boat transfer","amount":500},{"label":"Research guide","amount":700},{"label":"Environmental fee","amount":300}]'::jsonb,
    array['flathead-goby', 'common-green-frog', 'water-monitor', 'common-sunken-eyed-skink',
          'large-flying-fox', 'common-fruit-bat', 'water-hyacinth', 'freshwater-mangrove'],
-   '/images/lake-canopy.jpg')
+   '[{"time":"06:00","title":"Safety briefing and method overview","detail":"Survey ethics, permits and data use."}]'::jsonb,
+   '[{"label":"Boat transfer","amount":500},{"label":"Research guide","amount":700},{"label":"Environmental fee","amount":300}]'::jsonb,
+   '/images/tours/educational-research-trek.jpg')
 on conflict (slug) do update
   set species_slugs = excluded.species_slugs
   where public.tours.species_slugs = '{}';
 
 insert into public.advisories
-  (id, author_id, title, slug, severity, excerpt, content, published_at, is_active_banner)
+  (id, author_id, title, slug, severity, category, excerpt, content,
+   effective_until, actions, published_at, is_active_banner)
 values
   ('a1000000-0000-4000-8000-000000000001', '11111111-1111-4111-8111-111111111111',
-   'Migratory waterbirds begin arriving on the eastern marsh', 'waterbird-arrivals-eastern-marsh', 'INFO',
-   'Early flocks of egrets and ducks have been recorded ahead of the usual November peak.',
-   'Birdwatching boats are advised to keep distance from feeding groups and to keep engines at idle near roosts.',
+   'Migratory waterbirds begin arriving on the eastern marsh', 'waterbird-arrivals-eastern-marsh', 'INFO', 'Wildlife',
+   'Early flocks of egrets and ducks have been recorded ahead of the usual November peak. Birdwatching boats are advised to keep distance from feeding groups.',
+   'The park office has logged the first flocks of the season on the eastern marsh — little egrets, great egrets and small parties of whistling duck — roughly three weeks earlier than the November peak of recent years.
+
+The birds arrive thin after the flight south and feed almost continuously for their first fortnight. Disturbance during this window costs them condition they cannot easily recover before the return migration.
+
+Boat operators holding a birdwatching booking should keep at least fifty metres from any raft of birds on open water, and cut engines rather than idling close by. The eastern marsh channel remains open to accredited boats only.',
+   '2027-03-31',
+   array['Keep 50 m from feeding flocks and switch off the engine when drifting closer.',
+         'Binoculars are required for the birdwatching package — do not approach to compensate for missing optics.',
+         'Report unusual or tagged birds to the park office with the date and location.'],
    '2026-10-14T08:00:00Z', false),
   ('a1000000-0000-4000-8000-000000000002', '11111111-1111-4111-8111-111111111111',
-   'Boat speed restricted at the northern river mouths', 'boat-speed-restricted-river-mouths', 'WARNING',
-   'Sustained rain has raised water levels and pushed debris into the channels.',
-   'Operators must reduce speed and keep to the marked route until the debris clears.',
+   'Boat speed restricted at the northern river mouths', 'boat-speed-restricted-river-mouths', 'WARNING', 'Water',
+   'Sustained rain has raised water levels and pushed debris into the channels. Operators must reduce speed and keep to the marked route.',
+   'Rain across the catchment has raised lake levels and carried floating timber and hyacinth mats into the northern river mouths. Two channels that were clear last month now carry debris below the surface.
+
+Until the levels drop, boats must travel at displacement speed through the marked route and give way to any floating vegetation mat, which can hide submerged logs.
+
+The park office is clearing the main access channel weekly. Report new obstructions at the boat landing rather than attempting to move them.',
+   '2026-12-15',
+   array['Reduce to displacement speed between the river mouths and the main lake.',
+         'Keep inside the marked route — the shortcuts are the ones with debris.',
+         'Wear the life jacket for the whole crossing, not just the open water.'],
    '2026-10-09T08:00:00Z', false),
   ('a1000000-0000-4000-8000-000000000003', '11111111-1111-4111-8111-111111111111',
-   'Volunteer briefing for the Asian Waterbird Census', 'waterbird-census-volunteer-briefing', 'INFO',
-   'Students and researchers joining the January count are invited to the orientation at the park office.',
-   'Bring binoculars and a field notebook. The briefing runs 09:00–11:00 at the protected area office.',
+   'Volunteer briefing for the Asian Waterbird Census', 'waterbird-census-volunteer-briefing', 'INFO', 'Operations',
+   'Students and researchers joining the January count are invited to the orientation at the park office. Bring binoculars and a field notebook.',
+   'The annual Asian Waterbird Census takes place in the second week of January. Volunteers are counted in teams of three, each with one experienced counter and one GPS unit.
+
+A mandatory orientation is held at the park office covering the count protocol, the sector boundaries and the biosecurity rules for boots and tripods entering the marsh.
+
+Places are limited by boat capacity. Register through the park office before the end of December; transport from Naujan town is provided for registered volunteers.',
+   '2027-01-20',
+   array['Register before 31 December — places are capped by available boats.',
+         'Attend the orientation; counters cannot be deployed without it.',
+         'Bring binoculars, a notebook, and footwear you can rinse at the landing.'],
    '2026-09-28T08:00:00Z', false),
   -- The demo build shows this closure in the site-wide banner. Without the row
   -- here, applying the schema would silently drop the banner: the table is no
   -- longer empty, so `lib/advisories.ts` stops falling back to its seeds.
   ('a1000000-0000-4000-8000-000000000004', '11111111-1111-4111-8111-111111111111',
-   'Boat operations suspended under a gale warning', 'gale-warning-boat-suspension', 'CRITICAL',
+   'Boat operations suspended under a gale warning', 'gale-warning-boat-suspension', 'CRITICAL', 'Operations',
    'PAGASA has raised a gale warning for the Naujan coast. All boat tours and lake crossings are suspended until the warning is lifted.',
    'The park office has suspended all boat departures after PAGASA raised a gale warning for the Oriental Mindoro coast. This covers guided tours, research crossings and private landings.
 
 The shoreline trail and the viewing deck stay open while conditions allow. Do not move beyond the marked barrier at the jetty.
 
 The suspension is reviewed every morning at 6:00 AM. Bookings already confirmed are moved to the next safe departure at no extra cost.',
+   '2026-11-12',
+   array['Do not board or launch any boat until the park office lifts the suspension.',
+         'Call the park office before travelling if you have a booking this week.',
+         'Follow the marked barrier at the jetty and keep children away from the water.'],
    '2026-11-09T08:00:00Z', true),
   ('a1000000-0000-4000-8000-000000000005', '11111111-1111-4111-8111-111111111111',
-   'Reed beds closed to landing during the nesting season', 'reed-bed-nesting-closure', 'WARNING',
+   'Reed beds closed to landing during the nesting season', 'reed-bed-nesting-closure', 'WARNING', 'Access',
    'The eastern reed beds are closed to landings while Philippine duck and purple heron are nesting. Boats may pass on the marked channel only.',
    'Philippine duck — the park''s flagship species and a Philippine endemic — nests in the eastern reed beds from September through December. Purple heron nest in the same stand.
 
 Landing, dragging boats onto the vegetation or pushing through the reeds destroys nests that are effectively invisible from the water. A single landing can flatten several.
 
 The marked channel through the eastern marsh stays open. The closure applies to landings and to any boat entering the vegetation, including kayaks and paddle craft.',
+   '2026-12-31',
+   array['Stay in the marked channel through the eastern marsh.',
+         'No landings, no dragging, no pushing into the reeds — including paddle craft.',
+         'If a nest is visible from the channel, move on without stopping.'],
    '2026-09-12T08:00:00Z', false),
   ('a1000000-0000-4000-8000-000000000006', '11111111-1111-4111-8111-111111111111',
-   'Fishpen harvest schedule for the lakeside operators', 'fishpen-harvest-schedule', 'INFO',
+   'Fishpen harvest schedule for the lakeside operators', 'fishpen-harvest-schedule', 'INFO', 'Operations',
    'Registered operators harvest the shallow pens on a rotating schedule through September. Boat traffic at the southern landing will be heavier on those days.',
    'The registered lakeside operators harvest the shallow pens on a rotating schedule through September, with landings concentrated at the southern jetty.
 
 Visitor boats are not excluded, but the landing area will be busy and parking limited on harvest days. Allow extra time before a morning departure.
 
 Buying fish directly at the landing is permitted. The park office asks that visitors do not enter the pens or walk on the netting.',
+   null,
+   array[]::text[],
    '2026-08-30T08:00:00Z', false),
   ('a1000000-0000-4000-8000-000000000007', '11111111-1111-4111-8111-111111111111',
-   'Shoreline trail bridge under repair until November', 'trail-bridge-repair', 'WARNING',
+   'Shoreline trail bridge under repair until November', 'trail-bridge-repair', 'WARNING', 'Access',
    'The timber bridge on the shoreline trail is being replaced. The research trek is rerouted onto the service road for the rest of the season.',
    'The timber bridge carrying the shoreline trail over the western inlet has reached the end of its service life. Replacement work started this month and runs until the end of November.
 
 The educational research trek is rerouted onto the service road for the duration — a slightly longer walk with no shade in the middle section.
 
 The birdwatching and sunrise boat tours are unaffected, as neither uses the trail.',
+   '2026-11-30',
+   array['Follow the detour signs; do not cross the closed bridge.',
+         'Bring a hat and water for the exposed section of the service road.'],
    '2026-08-14T08:00:00Z', false)
 on conflict (slug) do nothing;
 
 insert into public.tour_inquiries
   (id, reference_code, tour_id, user_id, full_name, email, phone, target_date, party_size, notes, status, created_at)
 values
-  ('i1000000-0000-4000-8000-000000000001', 'NL-2026-104882',
-   't1000000-0000-4000-8000-000000000002', '22222222-2222-4222-8222-222222222222',
+  ('d1000000-0000-4000-8000-000000000001', 'NL-2026-104882',
+   'e1000000-0000-4000-8000-000000000002', '22222222-2222-4222-8222-222222222222',
    'Demo Visitor', 'visitor@example.com', '+63 917 000 0002', '2026-11-14', 2,
    'Coming from Calapan, can we leave a motorbike at the jetty?', 'PENDING', '2026-11-06T09:12:00Z'),
-  ('i1000000-0000-4000-8000-000000000002', 'NL-2026-103417',
-   't1000000-0000-4000-8000-000000000001', '33333333-3333-4333-8333-333333333333',
+  ('d1000000-0000-4000-8000-000000000002', 'NL-2026-103417',
+   'e1000000-0000-4000-8000-000000000001', '33333333-3333-4333-8333-333333333333',
    'Ana Reyes', 'ana.reyes@example.com', '+63 918 442 1180', '2026-11-21', 4,
    'Two of us have binoculars already.', 'CONFIRMED', '2026-11-02T07:40:00Z')
 on conflict (reference_code) do nothing;

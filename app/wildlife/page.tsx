@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Image from "next/image";
 import Link from "next/link";
 import { Suspense } from "react";
 import {
@@ -202,8 +203,35 @@ async function CataloguePanel({ searchParams }: WildlifePageProps) {
                       <li key={entry.slug}>
                         <Link
                           href={`/wildlife/${entry.slug}`}
-                          className="group flex h-full flex-col rounded-2xl bg-white p-5 ring-1 ring-ink/8 transition-shadow duration-300 hover:ring-ink/16 focus-visible:ring-2 focus-visible:ring-lake-700/40 focus-visible:outline-none"
+                          className="group flex h-full flex-col overflow-hidden rounded-2xl bg-white ring-1 ring-ink/8 transition-shadow duration-300 hover:ring-ink/16 focus-visible:ring-2 focus-visible:ring-lake-700/40 focus-visible:outline-none"
                         >
+                          <div className="relative aspect-[4/3] w-full overflow-hidden bg-sand-100">
+                            {entry.photo ? (
+                              <Image
+                                src={entry.photo.src}
+                                alt={entry.photo.alt}
+                                fill
+                                sizes="(max-width: 640px) 100vw, (max-width: 1280px) 50vw, 33vw"
+                                className="object-cover transition-transform duration-500 group-hover:scale-[1.04]"
+                              />
+                            ) : (
+                              <span className="grid h-full place-items-center text-sand-400">
+                                <Icon
+                                  className="size-9"
+                                  strokeWidth={1.4}
+                                  aria-hidden="true"
+                                />
+                              </span>
+                            )}
+                          </div>
+
+                          {entry.photo ? (
+                            <p className="truncate bg-sand-50 px-5 py-1.5 text-[10px] text-sand-600">
+                              Photo · {entry.photo.credit} · {entry.photo.license}
+                            </p>
+                          ) : null}
+
+                          <div className="flex flex-1 flex-col p-5">
                           <div className="flex items-start justify-between gap-3">
                             <div className="min-w-0">
                               <h3 className="text-[15.5px] leading-snug font-medium text-ink">
@@ -258,6 +286,7 @@ async function CataloguePanel({ searchParams }: WildlifePageProps) {
                               aria-hidden="true"
                             />
                           </span>
+                          </div>
                         </Link>
                       </li>
                     ))}
@@ -353,6 +382,19 @@ export default async function WildlifePage({ searchParams }: WildlifePageProps) 
           >
             <CataloguePanel searchParams={searchParams} />
           </Suspense>
+
+          <p className="mt-12 border-t border-ink/8 pt-5 text-[11.5px] leading-relaxed text-sand-600">
+            Species photographs are illustrative — they identify the organism,
+            not a sighting at Naujan Lake. Every image is a freely licensed
+            Wikimedia Commons photograph; see the{" "}
+            <a
+              href="/images/CREDITS.md"
+              className="font-medium text-lake-800 underline underline-offset-2 hover:text-lake-950"
+            >
+              full image credits
+            </a>{" "}
+            for authors and licences.
+          </p>
         </div>
       </div>
 

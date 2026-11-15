@@ -23,3 +23,26 @@ export function cleanEmail(value: string): string {
 export function cleanPhone(value: string): string {
   return cleanText(value, 32);
 }
+
+/** "Mindoro Bleeders → mindoro-bleeders". */
+export function slugify(value: string, maxLength = 72): string {
+  return value
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, maxLength);
+}
+
+/** Split multi-line textarea input into trimmed non-empty lines. */
+export function toCleanLines(
+  value: string,
+  maxLines: number,
+  maxLineLength = 220,
+): string[] {
+  return value
+    .split("\n")
+    .map((line) => cleanText(line, maxLineLength))
+    .filter(Boolean)
+    .slice(0, maxLines);
+}

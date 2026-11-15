@@ -3,8 +3,10 @@ import { sendEmail } from "@/lib/email";
 import {
   inquiryCancellationAlertEmail,
   inquiryCancelledEmail,
+  inquiryCompletedEmail,
   inquiryConfirmedEmail,
   inquiryDeclinedEmail,
+  inquiryOnProcessEmail,
 } from "@/lib/email-templates";
 import type { InquiryActor, InquiryStatus } from "@/lib/inquiries";
 import { parseInquiryPayload } from "@/lib/inquiry-payload";
@@ -37,7 +39,9 @@ function isRateLimited(key: string): boolean {
 }
 
 const NOTIFIABLE_STATUSES: readonly InquiryStatus[] = [
+  "ON_PROCESS",
   "CONFIRMED",
+  "COMPLETED",
   "DECLINED",
   "CANCELLED",
 ];
@@ -76,8 +80,12 @@ export async function POST(request: Request) {
   const actor: InquiryActor = payload.actor === "visitor" ? "visitor" : "park";
 
   let message;
-  if (status === "CONFIRMED") {
+  if (status === "ON_PROCESS") {
+    message = inquiryOnProcessEmail(inquiry);
+  } else if (status === "CONFIRMED") {
     message = inquiryConfirmedEmail(inquiry);
+  } else if (status === "COMPLETED") {
+    message = inquiryCompletedEmail(inquiry);
   } else if (status === "DECLINED") {
     message = inquiryDeclinedEmail(inquiry);
   } else if (actor === "visitor") {
