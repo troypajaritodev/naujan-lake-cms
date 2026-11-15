@@ -13,7 +13,7 @@
 
 import { cacheLife, cacheTag } from "next/cache";
 import { getSupabaseClient, type Tables } from "@/lib/supabase";
-import { fetchOrFallback, queryError } from "@/lib/supabase/query";
+import { queryError } from "@/lib/supabase/query";
 
 export type AdvisorySeverity = "CRITICAL" | "WARNING" | "INFO";
 
@@ -257,6 +257,7 @@ function toAdvisory(row: Tables<"advisories">): Advisory {
   };
 }
 
+
 /** Every published notice, newest first. */
 export async function getSortedAdvisories(): Promise<Advisory[]> {
   "use cache";
@@ -266,21 +267,13 @@ export async function getSortedAdvisories(): Promise<Advisory[]> {
   const client = getSupabaseClient();
   if (!client) return sortNewestFirst(seedAdvisories);
 
-  return fetchOrFallback(
-    "advisories",
-    async () => {
-      const { data, error } = await client
-        .from("advisories")
-        .select("*")
-        .order("published_at", { ascending: false });
+  const { data, error } = await client
+    .from("advisories")
+    .select("*")
+    .order("published_at", { ascending: false });
 
-      if (error) throw queryError("advisories", error.message);
-      return data && data.length > 0
-        ? data.map(toAdvisory)
-        : sortNewestFirst(seedAdvisories);
-    },
-    () => sortNewestFirst(seedAdvisories),
-  );
+  if (error) throw queryError("advisories", error.message);
+  return (data ?? []).map(toAdvisory);
 }
 
 export async function getAdvisory(slug: string): Promise<Advisory | undefined> {
@@ -293,20 +286,14 @@ export async function getAdvisory(slug: string): Promise<Advisory | undefined> {
     return seedAdvisories.find((advisory) => advisory.slug === slug);
   }
 
-  return fetchOrFallback(
-    `advisory ${slug}`,
-    async () => {
-      const { data, error } = await client
-        .from("advisories")
-        .select("*")
-        .eq("slug", slug)
-        .maybeSingle();
+  const { data, error } = await client
+    .from("advisories")
+    .select("*")
+    .eq("slug", slug)
+    .maybeSingle();
 
-      if (error) throw queryError("advisory", error.message);
-      return data ? toAdvisory(data) : undefined;
-    },
-    () => seedAdvisories.find((advisory) => advisory.slug === slug),
-  );
+  if (error) throw queryError("advisory", error.message);
+  return data ? toAdvisory(data) : undefined;
 }
 
 /** The newest notices, shaped for the home-page preview list. */

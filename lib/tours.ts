@@ -335,7 +335,7 @@ function toTariff(value: unknown): TariffLine[] {
   );
 }
 
-function toTour(row: Tables<"tours">): Tour {
+export function toTour(row: Tables<"tours">): Tour {
   return {
     slug: row.slug,
     title: row.title,

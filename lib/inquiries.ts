@@ -253,3 +253,10 @@ export async function createInquiry(input: InquiryInput): Promise<Inquiry> {
   emit();
   return inquiry;
 }
+
+/** Keeps a server-persisted inquiry visible in the existing local demo views. */
+export function cacheInquiry(inquiry: Inquiry): void {
+  const current = readInquiries().filter((item) => item.id !== inquiry.id);
+  writeInquiries([inquiry, ...current]);
+  emit();
+}

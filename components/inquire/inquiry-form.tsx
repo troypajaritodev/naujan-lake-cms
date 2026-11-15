@@ -12,7 +12,8 @@ import {
 import { AuthField } from "@/components/auth-shell";
 import { useAuth } from "@/components/auth-provider";
 import type { SessionUser } from "@/lib/auth";
-import { createInquiry, type Inquiry } from "@/lib/inquiries";
+import { cacheInquiry, type Inquiry } from "@/lib/inquiries";
+import { createSupabaseInquiry } from "@/lib/inquiry-actions";
 import type { Tour } from "@/lib/tours";
 
 const peso = new Intl.NumberFormat("en-PH", {
@@ -105,6 +106,15 @@ function InquiryFields({
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const [sent, setSent] = useState<Inquiry | null>(null);
+  const [submissionToken, setSubmissionToken] = useState(() => {
+    if (typeof window === "undefined") return crypto.randomUUID();
+    const key = "nl.inquiry.submission-token.v1";
+    const existing = window.sessionStorage.getItem(key);
+    if (existing) return existing;
+    const created = crypto.randomUUID();
+    window.sessionStorage.setItem(key, created);
+    return created;
+  });
 
   const selected = useMemo(
     () => tours.find((tour) => tour.slug === values.tourSlug),
@@ -153,29 +163,31 @@ function InquiryFields({
 
     setPending(true);
 
-    const inquiry = await createInquiry({
-      userEmail: user.email,
-      fullName: values.fullName.trim(),
-      email: values.email.trim(),
-      phone: values.phone.trim(),
-      tourSlug: selected.slug,
-      tourTitle: selected.title,
-      preferredDate: values.preferredDate,
-      partySize: party,
-      message: values.message.trim(),
-    });
-
-    // The record is already saved locally; the emails are a best-effort side
-    // effect, so a failed send never blocks the confirmation screen.
-    void fetch("/api/inquiries/notify", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(inquiry),
-      keepalive: true,
-    }).catch(() => {});
-
-    setSent(inquiry);
-    setPending(false);
+    try {
+      const inquiry = await createSupabaseInquiry({
+        submissionToken,
+        fullName: values.fullName,
+        email: values.email,
+        phone: values.phone,
+        tourSlug: selected.slug,
+        preferredDate: values.preferredDate,
+        partySize: party,
+        message: values.message,
+      });
+      cacheInquiry(inquiry);
+      const nextToken = crypto.randomUUID();
+      window.sessionStorage.setItem("nl.inquiry.submission-token.v1", nextToken);
+      setSubmissionToken(nextToken);
+      setSent(inquiry);
+    } catch (submissionError) {
+      setError(
+        submissionError instanceof Error
+          ? submissionError.message
+          : "Could not save the inquiry. Please try again.",
+      );
+    } finally {
+      setPending(false);
+    }
   }
 
   if (sent) {

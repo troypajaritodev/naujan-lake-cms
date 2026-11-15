@@ -77,6 +77,34 @@ export function inquiryNotificationEmail(inquiry: Inquiry): EmailMessage {
   };
 }
 
+/** Sent to the visitor after the park office changes an inquiry decision. */
+export function inquiryDecisionEmail(
+  inquiry: Inquiry,
+  decision: "CONFIRMED" | "DECLINED",
+): EmailMessage {
+  const confirmed = decision === "CONFIRMED";
+  return {
+    to: inquiry.email,
+    subject: `Inquiry ${confirmed ? "confirmed" : "declined"} · ${inquiry.reference}`,
+    replyTo: PARK_INBOX,
+    text: [
+      `Hello ${firstName(inquiry.fullName)},`,
+      "",
+      `The park office has ${confirmed ? "confirmed" : "declined"} your booking inquiry.`,
+      "",
+      ...inquiryFacts(inquiry),
+      `Decision: ${confirmed ? "Confirmed" : "Declined"}`,
+      "",
+      confirmed
+        ? "Please reply to this message if you need to update any details."
+        : "Please reply to this message if you would like to discuss another date or package.",
+      `For assistance, reply to this email or write to ${PARK_INBOX}.`,
+      "",
+      PARK_NAME,
+    ].join("\n"),
+  };
+}
+
 /** One message per subscriber when a CRITICAL advisory is published (FR-6.3). */
 export function advisoryDigestEmail(
   to: string,

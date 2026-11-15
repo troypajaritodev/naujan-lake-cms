@@ -41,7 +41,10 @@ database: that is demo mode.
 
 1. Create a Supabase project and run [`supabase/schema.sql`](./supabase/schema.sql)
    in the SQL editor. It creates the seven tables, the RLS policies and the demo
-   seed rows.
+   seed rows. For an existing project with these tables, run
+   [`supabase/grant_api_access.sql`](./supabase/grant_api_access.sql) instead;
+   it tightens API privileges and inquiry ownership checks without changing
+   records, recreating tables, or disabling RLS.
 2. Run [`supabase/seed_species.sql`](./supabase/seed_species.sql) in the SQL
    editor after the schema. It imports the 18 existing catalogue records with
    stable IDs and `ON CONFLICT (slug) DO NOTHING`, so re-running it does not
@@ -64,7 +67,7 @@ admin species CRUD reports a configuration error.
 | `lib/tours.ts` | `tours` (active rows only) | seed packages in the same file |
 | `lib/advisories.ts` | `advisories` (published rows only) | seed notices in the same file |
 | `lib/guidelines.ts` | — | static copy (no table yet) |
-| `lib/inquiries.ts` | `tour_inquiries` (planned, needs auth) | `localStorage` demo store |
+| `app/admin/inquiries/page.tsx` | `tour_inquiries`, `tours` via server-only admin actions | none; query errors are shown |
 | `lib/subscribers.ts` | `subscribers` (planned, needs auth) | `localStorage` demo store |
 
 Reads are memoised with Next.js `use cache` (`cacheLife("hours")`) and tagged
@@ -95,6 +98,8 @@ deliberately noindexed), with LCP ≤ 0.68s and CLS = 0 on all ten routes.
 The doc also lists the contrast/aria fixes the audit surfaced and the
 remaining follow-ups (admin table captions).
 
-Inquiry and subscriber records stay in the browser until Supabase Auth is
-wired up (Milestone 4 of issue #1): the staff-facing reads are protected by
-`is_admin()`, so moving them now would show an empty admin panel.
+Visitor registration/profile changes, public inquiry submissions, and
+subscriber signups still use browser storage until their server-side flows are
+implemented. The admin Users and Inquiries pages read Supabase through
+server-only actions that validate the signed administrator session; they do
+not show seeded or browser-local rows as database results.

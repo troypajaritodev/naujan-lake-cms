@@ -143,7 +143,7 @@ To establish the definitive digital hub for Naujan Lake National Park that balan
     └── /subscribers (Newsletter Audience Management)
 ```
 
-> Routes marked in §12.4 as *planned* are specified here but not yet built; the implemented set is listed there with its source path.
+> Routes marked in §12.4 as *planned* are specified here but not yet built; routes marked *in progress* are under implementation and verification.
 
 ---
 
@@ -530,7 +530,7 @@ evidence base for the volume assumptions in the revenue model (§6).
 | Triage inquiries | `/admin/inquiries` | Implemented |
 | View reports | `/admin/inquiries` | Implemented |
 | Publish advisories | `/admin/advisories` | Planned |
-| Manage tour packages | `/admin/tours` | Planned |
+| Manage tour packages | `/admin/tours` | In progress — read verified; writes pending |
 
 Authentication currently runs against a local account store (`lib/auth.ts`, salted SHA-256
 digests, `localStorage` session) so the system can be demonstrated without a live Supabase

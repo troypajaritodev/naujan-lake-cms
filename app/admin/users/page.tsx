@@ -1,10 +1,11 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Search, Users } from "lucide-react";
 import StatCard from "@/components/admin/stat-card";
 import { useAuth } from "@/components/auth-provider";
-import { listUsers, summariseUsers, type Role, type SessionUser } from "@/lib/auth";
+import { listAdminUsersAction } from "@/lib/admin-cms-actions";
+import { summariseUsers, type Role, type SessionUser } from "@/lib/auth";
 
 const dateFormat = new Intl.DateTimeFormat("en-PH", {
   day: "numeric",
@@ -41,9 +42,33 @@ function initials(name: string) {
 
 export default function AdminUsersPage() {
   const { user: currentUser } = useAuth();
-  const [users] = useState<SessionUser[]>(() => listUsers());
+  const [users, setUsers] = useState<SessionUser[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<Filter>("ALL");
+
+  useEffect(() => {
+    let active = true;
+    listAdminUsersAction()
+      .then((loadedUsers) => {
+        if (active) setUsers(loadedUsers);
+      })
+      .catch((error: unknown) => {
+        if (active) {
+          setLoadError(
+            error instanceof Error ? error.message : "Could not load users.",
+          );
+        }
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const stats = useMemo(() => summariseUsers(users), [users]);
 
@@ -167,7 +192,7 @@ export default function AdminUsersPage() {
                       <div className="min-w-0">
                         <p className="flex items-center gap-2 text-[13.5px] font-medium text-ink">
                           {user.fullName}
-                          {currentUser?.id === user.id && (
+                          {currentUser?.email.toLowerCase() === user.email.toLowerCase() && (
                             <span className="rounded-full bg-sand-200 px-1.5 py-0.5 text-[9px] font-semibold tracking-[0.1em] text-sand-800 uppercase">
                               You
                             </span>
@@ -195,7 +220,23 @@ export default function AdminUsersPage() {
                 </tr>
               ))}
 
-              {visible.length === 0 && (
+              {loading && (
+                <tr>
+                  <td colSpan={4} className="px-5 py-10 text-center text-[13px] text-ink-soft/65">
+                    Loading Supabase accounts…
+                  </td>
+                </tr>
+              )}
+
+              {loadError && (
+                <tr>
+                  <td colSpan={4} className="px-5 py-10 text-center text-[13px] text-alert-700" role="alert">
+                    {loadError}
+                  </td>
+                </tr>
+              )}
+
+              {!loading && !loadError && visible.length === 0 && (
                 <tr>
                   <td colSpan={4} className="px-5 py-14 text-center">
                     <Users
