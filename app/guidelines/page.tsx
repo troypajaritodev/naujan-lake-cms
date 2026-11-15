@@ -8,6 +8,7 @@ import {
   Trash2,
 } from "lucide-react";
 import SectionHeading from "@/components/section-heading";
+import LakeMap from "@/components/guidelines/lake-map";
 import ZoningSection from "@/components/guidelines/zoning-section";
 import { type ParkRule } from "@/lib/guidelines";
 import { getLakeZones, getParkRules } from "@/lib/guidelines-data";
@@ -126,7 +127,8 @@ const icons: Record<ParkRule["icon"], typeof Trash2> = {
           </div>
         </section>
 
-        <ZoningSection zones={zones} />
-      </>
+      <ZoningSection zones={zones} />
+      <LakeMap />
+    </>
     );
   }

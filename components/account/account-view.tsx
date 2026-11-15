@@ -35,6 +35,7 @@ import {
   X,
 } from "lucide-react";
 import { AuthField } from "@/components/auth-shell";
+import BookingQrPass, { buildVerifyPath } from "@/components/booking-qr-pass";
 import BrandMark from "@/components/brand-mark";
 import { useAuth } from "@/components/auth-provider";
 import { AuthError, type SessionUser } from "@/lib/auth";
@@ -1975,41 +1976,45 @@ function AccountDashboard({ user }: { user: SessionUser }) {
                 <span className="-mr-8 size-4 rounded-full bg-sand-200/80 ring-1 ring-ink/10" />
               </div>
 
-              <div className="flex flex-wrap items-center justify-between gap-3 text-[12px] text-ink-soft/80">
-                <div className="space-y-1 flex-1 min-w-[220px]">
+              <div className="flex flex-wrap items-center justify-between gap-4 text-[12px] text-ink-soft/80">
+                <div className="min-w-[200px] flex-1 space-y-1.5">
                   <p className="font-semibold text-ink">Park Jetty Check-in Checklist</p>
                   <p>• Present reference ({passModal.reference}) and a valid ID at the Naujan Park Office.</p>
                   <p>• Arrive at least 15 minutes before departure for ranger briefing and boat manifest.</p>
                   <p>• Remaining balance of {peso.format(passModal.balanceAmount ?? 0)} settles on arrival.</p>
+                  {passModal.paymentStatus === "VERIFIED" && (
+                    <span className="mt-1 inline-block rounded-full border border-moss-600/35 bg-moss-50 px-3 py-1 text-[10px] font-bold tracking-[0.14em] text-moss-800 uppercase">
+                      Deposit Seal · VERIFIED
+                    </span>
+                  )}
                 </div>
-                {passModal.paymentStatus === "VERIFIED" && (
-                  <div className="shrink-0 rounded-xl border-2 border-moss-600/35 bg-moss-50 px-3.5 py-2 text-center">
-                    <p className="text-[9px] font-bold tracking-[0.18em] text-moss-700 uppercase">
-                      Deposit Seal
-                    </p>
-                    <p className="mt-0.5 text-[12px] font-semibold text-moss-800">
-                      VERIFIED
-                    </p>
-                  </div>
-                )}
+                <BookingQrPass inquiry={passModal} size={116} />
               </div>
 
-              <div className="flex items-center justify-end gap-2.5 border-t border-ink/8 pt-4 print:hidden">
-                <button
-                  type="button"
-                  onClick={() => window.print()}
-                  className="inline-flex items-center gap-2 rounded-full bg-lake-800 px-5 py-2.5 text-[12.5px] font-semibold text-sand-50 hover:bg-lake-700"
+              <div className="flex flex-wrap items-center justify-between gap-2.5 border-t border-ink/8 pt-4 print:hidden">
+                <Link
+                  href={buildVerifyPath(passModal)}
+                  className="text-[12px] font-semibold text-lake-800 underline underline-offset-4 hover:text-lake-700"
                 >
-                  <Printer className="size-4" />
-                  Print pass / Save PDF
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setPassModal(null)}
-                  className="rounded-full border border-ink/15 px-4 py-2.5 text-[12.5px] font-medium text-ink hover:bg-sand-100"
-                >
-                  Close
-                </button>
+                  Open live dock verification link
+                </Link>
+                <div className="flex items-center gap-2.5">
+                  <button
+                    type="button"
+                    onClick={() => window.print()}
+                    className="inline-flex items-center gap-2 rounded-full bg-lake-800 px-5 py-2.5 text-[12.5px] font-semibold text-sand-50 hover:bg-lake-700"
+                  >
+                    <Printer className="size-4" />
+                    Print pass / Save PDF
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPassModal(null)}
+                    className="rounded-full border border-ink/15 px-4 py-2.5 text-[12.5px] font-medium text-ink hover:bg-sand-100"
+                  >
+                    Close
+                  </button>
+                </div>
               </div>
             </div>
           </div>

@@ -1,0 +1,105 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1120 700" role="img" aria-labelledby="title desc">
+  <title id="title">Context Diagram - Naujan Lake Eco-Tourism and Wildlife CMS</title>
+  <desc id="desc">Level-0 Context Diagram showing external entities interacting with the central Naujan Lake Web Application and CMS.</desc>
+  <defs>
+    <style>
+      .bg { fill: #f7f4ec; }
+      .title { font: 600 22px "Georgia", serif; fill: #122629; }
+      .sub { font: 400 13px "Segoe UI", sans-serif; fill: #536466; }
+      .system { fill: #103b42; stroke: #0a252a; stroke-width: 2.5; }
+      .sys-title { font: 600 18px "Georgia", serif; fill: #faf8f2; text-anchor: middle; }
+      .sys-sub { font: 400 12px "Segoe UI", sans-serif; fill: #cde1df; text-anchor: middle; }
+      .entity { fill: #ffffff; stroke: #1e5f68; stroke-width: 2; }
+      .ext { fill: #eef4f2; stroke: #2c6e58; stroke-width: 2; stroke-dasharray: 6 3; }
+      .ent-title { font: 700 14px "Segoe UI", sans-serif; fill: #122629; text-anchor: middle; }
+      .ent-sub { font: 400 11px "Segoe UI", sans-serif; fill: #536466; text-anchor: middle; }
+      .flow { fill: none; stroke: #1e5f68; stroke-width: 1.8; marker-end: url(#arrow); }
+      .flow-alt { fill: none; stroke: #8a5a19; stroke-width: 1.8; marker-end: url(#arrow-gold); }
+      .lbl { font: 600 10.5px "Segoe UI", sans-serif; fill: #1b3d42; }
+      .lbl-alt { font: 600 10.5px "Segoe UI", sans-serif; fill: #7b4e12; }
+    </style>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 1.5 L 9 5 L 0 8.5 z" fill="#1e5f68" />
+    </marker>
+    <marker id="arrow-gold" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 1.5 L 9 5 L 0 8.5 z" fill="#8a5a19" />
+    </marker>
+  </defs>
+
+  <rect class="bg" width="1120" height="700" rx="16" />
+
+  <text x="40" y="46" class="title">Context Diagram (Level 0 DFD) — Naujan Lake Visitor Hub &amp; CMS</text>
+  <text x="40" y="68" class="sub">System boundary and external data flows across visitors, park rangers, operators, and integrated external APIs</text>
+
+  <!-- Central System Process -->
+  <rect x="380" y="255" width="360" height="190" rx="28" class="system" />
+  <text x="560" y="305" class="sys-title">0. Naujan Lake Eco-Tourism</text>
+  <text x="560" y="330" class="sys-title">&amp; Wildlife CMS</text>
+  <line x1="430" y1="352" x2="690" y2="352" stroke="#338785" stroke-width="1.2" />
+  <text x="560" y="378" class="sys-sub">Public Portal · Booking &amp; First Payment</text>
+  <text x="560" y="398" class="sys-sub">7-Module Admin CMS · Tracker &amp; Messenger</text>
+  <text x="560" y="418" class="sys-sub">QR Boarding Passes · Analytics &amp; Reports</text>
+
+  <!-- External Entity 1: Visitors / Eco-Tourists (Top Left) -->
+  <rect x="45" y="135" width="230" height="96" rx="14" class="entity" />
+  <text x="160" y="168" class="ent-title">Visitor / Eco-Tourist</text>
+  <text x="160" y="188" class="ent-sub">Domestic tourists, birders,</text>
+  <text x="160" y="205" class="ent-sub">students &amp; researchers</text>
+
+  <!-- External Entity 2: Park Administrator / Ranger (Top Right) -->
+  <rect x="845" y="135" width="230" height="96" rx="14" class="entity" />
+  <text x="960" y="168" class="ent-title">Park Admin / Ranger</text>
+  <text x="960" y="188" class="ent-sub">PAMB staff &amp; Municipal</text>
+  <text x="960" y="205" class="ent-sub">Tourism desk officers</text>
+
+  <!-- External Entity 3: Accredited Boat Operators (Bottom Left) -->
+  <rect x="45" y="475" width="230" height="96" rx="14" class="entity" />
+  <text x="160" y="508" class="ent-title">Boat Operators &amp; Guides</text>
+  <text x="160" y="528" class="ent-sub">Accredited lakeside boatmen</text>
+  <text x="160" y="545" class="ent-sub">&amp; community homestays</text>
+
+  <!-- External Entity 4: External Cloud & APIs (Bottom Right) -->
+  <rect x="845" y="460" width="230" height="126" rx="14" class="ext" />
+  <text x="960" y="492" class="ent-title">External Integrated APIs</text>
+  <text x="960" y="514" class="ent-sub">Supabase PostgreSQL</text>
+  <text x="960" y="532" class="ent-sub">Resend Email REST API</text>
+  <text x="960" y="550" class="ent-sub">Open-Meteo Weather API</text>
+  <text x="960" y="568" class="ent-sub">OpenStreetMap &amp; QR Verifier</text>
+
+  <!-- Flows: Visitor <-> System -->
+  <path class="flow" d="M 275 168 L 415 262" />
+  <text x="275" y="198" class="lbl" transform="rotate(28 275 198)">Bookings, 30% Deposit, Messages, Signup</text>
+
+  <path class="flow-alt" d="M 380 300 L 210 231" />
+  <text x="168" y="275" class="lbl-alt">Tariffs, Wildlife, Tracker, QR Pass</text>
+
+  <!-- Flows: Admin <-> System -->
+  <path class="flow" d="M 845 168 L 705 262" />
+  <text x="720" y="202" class="lbl" transform="rotate(-28 720 202)">CMS Edits, Approvals, Advisories</text>
+
+  <path class="flow-alt" d="M 740 300 L 905 231" />
+  <text x="772" y="294" class="lbl-alt">Queue, Deposit Proofs, CSV Reports</text>
+
+  <!-- Flows: Operators <-> System -->
+  <path class="flow-alt" d="M 380 405 L 275 505" />
+  <text x="195" y="438" class="lbl-alt">Confirmed Passenger Manifests</text>
+
+  <path class="flow" d="M 275 540 L 420 445" />
+  <text x="310" y="534" class="lbl">Capacity &amp; Jetty Dispatch Feedback</text>
+
+  <!-- Flows: External APIs <-> System -->
+  <path class="flow" d="M 740 398 L 845 492" />
+  <text x="752" y="425" class="lbl">DB Writes, Emails, QR Payloads</text>
+
+  <path class="flow-alt" d="M 845 535 L 700 445" />
+  <text x="718" y="528" class="lbl-alt">Catalog Rows, Live Weather, Map Tiles</text>
+
+  <!-- Footer legend -->
+  <rect x="45" y="625" width="1030" height="44" rx="10" fill="#ffffff" stroke="#d8d2c3" />
+  <line x1="70" y1="647" x2="108" y2="647" stroke="#1e5f68" stroke-width="2.2" />
+  <text x="118" y="651" class="lbl">Inbound Requests / Writes / Commands</text>
+  <line x1="380" y1="647" x2="418" y2="647" stroke="#8a5a19" stroke-width="2.2" />
+  <text x="428" y="651" class="lbl-alt">Outbound Data / Tickets / Reports / Feeds</text>
+  <rect x="720" y="638" width="22" height="18" rx="4" class="ext" />
+  <text x="752" y="651" class="sub">External Cloud &amp; Third-Party Services</text>
+</svg>

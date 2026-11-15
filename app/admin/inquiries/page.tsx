@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import Image from "next/image";
+import Link from "next/link";
 import {
   AlertCircle,
   BellRing,
@@ -13,12 +14,14 @@ import {
   Inbox,
   Loader2,
   MessageSquareText,
+  QrCode,
   Search,
   Send,
   SlidersHorizontal,
   X,
 } from "lucide-react";
 import StatCard from "@/components/admin/stat-card";
+import BookingQrPass, { buildVerifyPath } from "@/components/booking-qr-pass";
 import { useAuth } from "@/components/auth-provider";
 import { downloadCsv } from "@/lib/csv";
 import {
@@ -747,6 +750,14 @@ export default function AdminInquiriesPage() {
                 </select>
               </div>
 
+              <Link
+                href="/verify"
+                className="inline-flex items-center gap-1.5 rounded-full border border-ink/12 bg-white px-3.5 py-2 text-[12px] font-semibold text-lake-800 transition-colors hover:bg-lake-50"
+              >
+                <QrCode className="size-3.5" />
+                Verify QR Pass
+              </Link>
+
               <button
                 type="button"
                 onClick={handleExportCsv}
@@ -1393,6 +1404,29 @@ export default function AdminInquiriesPage() {
                     Send
                   </button>
                 </div>
+              </div>
+
+              {/* QR Entry Pass Verification */}
+              <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl bg-white p-5 ring-1 ring-ink/8">
+                <div className="min-w-[200px] flex-1 space-y-1.5">
+                  <p className="text-[10px] font-semibold tracking-[0.16em] text-sand-600 uppercase">
+                    Digital Boarding Pass
+                  </p>
+                  <p className="text-[13px] font-medium text-ink">
+                    Dock check-in verification for {inspected.reference}
+                  </p>
+                  <p className="text-[12px] text-ink-soft/75">
+                    Rangers can scan this code at the jetty or open the dock verifier directly.
+                  </p>
+                  <Link
+                    href={buildVerifyPath(inspected)}
+                    className="mt-1 inline-flex items-center gap-1.5 text-[12px] font-semibold text-lake-800 hover:underline"
+                  >
+                    <QrCode className="size-3.5" />
+                    Open verifier view
+                  </Link>
+                </div>
+                <BookingQrPass inquiry={inspected} size={108} showDownload={false} />
               </div>
 
               {/* Timeline */}
