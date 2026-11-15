@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import type { PaymentMethod } from "@/lib/inquiries";
 import { cleanEmail, cleanText } from "@/lib/sanitize";
+import { siteUrl } from "@/lib/site-url";
 
 type CheckoutRequest = {
   amount?: unknown;
@@ -10,6 +11,52 @@ type CheckoutRequest = {
   customerName?: unknown;
   origin?: unknown;
 };
+
+const DEV_LOCALHOST_HOSTS = new Set(["localhost", "127.0.0.1"]);
+
+/**
+ * Only allows loopback `http://localhost[:port]` or `http://127.0.0.1[:port]`
+ * origins outside production so non-default dev ports still redirect cleanly
+ * without ever trusting arbitrary client-supplied origins.
+ */
+function isAllowedDevOrigin(candidate: string): string | null {
+  if (!candidate || process.env.NODE_ENV === "production") return null;
+
+  try {
+    const parsed = new URL(candidate);
+    if (
+      parsed.protocol === "http:" &&
+      !parsed.username &&
+      !parsed.password &&
+      DEV_LOCALHOST_HOSTS.has(parsed.hostname)
+    ) {
+      return parsed.origin;
+    }
+  } catch {
+    return null;
+  }
+
+  return null;
+}
+
+/**
+ * Resolves the canonical origin for PayMongo `success_url` / `cancel_url`.
+ * Prefers server-configured deployment URLs and never accepts untrusted
+ * client `origin` values.
+ */
+function resolveCheckoutOrigin(clientOrigin: unknown): string {
+  const configured =
+    process.env.NEXT_PUBLIC_SITE_URL?.trim() ||
+    process.env.VERCEL_PROJECT_PRODUCTION_URL?.trim();
+
+  if (configured) {
+    return siteUrl;
+  }
+
+  const rawOrigin =
+    typeof clientOrigin === "string" ? cleanText(clientOrigin, 240) : "";
+  return isAllowedDevOrigin(rawOrigin) ?? siteUrl;
+}
 
 function paymongoPaymentTypes(method: PaymentMethod): string[] {
   switch (method) {
@@ -53,10 +100,7 @@ export async function POST(request: Request) {
   const tourTitle = cleanText(String(body.tourTitle ?? "Naujan Lake Tour"), 140);
   const customerName = cleanText(String(body.customerName ?? "Visitor"), 120);
   const customerEmail = cleanEmail(String(body.customerEmail ?? ""));
-  const siteOrigin =
-    cleanText(String(body.origin ?? ""), 240) ||
-    process.env.NEXT_PUBLIC_SITE_URL ||
-    "http://localhost:3000";
+  const siteOrigin = resolveCheckoutOrigin(body.origin);
 
   const secretKey = process.env.PAYMONGO_SECRET_KEY?.trim();
   if (!secretKey) {
