@@ -25,5 +25,13 @@
     "eslint-config-next": "16.4.2",
     "tailwindcss": "^4",
     "typescript": "^5"
+  },
+  "description": "Naujan Lake National Park eco-tourism and wildlife information system",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/troypajaritodev/naujan-lake-cms.git"
+  },
+  "bugs": {
+    "url": "https://github.com/troypajaritodev/naujan-lake-cms/issues"
   }
 }

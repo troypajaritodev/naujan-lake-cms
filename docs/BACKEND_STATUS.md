@@ -39,6 +39,13 @@ Milestone 4 (Supabase Auth) lands.
 4. **Demo credentials hidden in production.** The login form's demo-account
    block and the register note about `localStorage` now render in development
    only.
+5. **Schema made safe to run.** The two `tour_inquiries` demo ids began with
+   `i` (not a hex digit), which would abort the whole `schema.sql` run on an
+   `invalid input syntax for type uuid` error. All 7 seed inserts now have
+   valid UUIDs and matching column/value arity: 3 users, 5 categories,
+   18 species, 4 tours, 7 advisories, 2 inquiries, 3 subscribers. The
+   advisory CMS columns (`category`, `effective_until`, `actions`,
+   `updated_at`) are added in place for older databases too.
 
 ## Checklist to make the backend live (owner: Marc)
 

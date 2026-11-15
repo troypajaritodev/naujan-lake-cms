@@ -339,10 +339,14 @@ A `species_media` gallery table is planned for FR-1.2 but is intentionally outsi
 | `title` | TEXT | NOT NULL | Headline |
 | `slug` | TEXT | NOT NULL, UNIQUE | URL slug |
 | `severity` | `advisory_severity` | NOT NULL | CRITICAL, WARNING, INFO |
+| `category` | TEXT | NOT NULL, DEFAULT `'Operations'`, check | Wildlife, Water, Access, Operations |
 | `excerpt` | TEXT | NOT NULL | Summary shown in feeds |
-| `content` | TEXT | NOT NULL | Full advisory body |
+| `content` | TEXT | NOT NULL | Full advisory body, paragraphs split on blank lines |
+| `effective_until` | DATE | NULLABLE | Last day the notice applies; NULL means open-ended |
+| `actions` | TEXT[] | NOT NULL, DEFAULT `{}` | Visitor checklist shown on the detail page |
 | `is_active_banner` | BOOLEAN | NOT NULL, DEFAULT FALSE | Pins it to the site-wide banner |
 | `published_at` | TIMESTAMPTZ | NOT NULL, DEFAULT `now()` | Publication date |
+| `created_at` / `updated_at` | TIMESTAMPTZ | NOT NULL, DEFAULT `now()` | Timestamps (`updated_at` maintained by trigger) |
 
 #### `subscribers`
 | Column | Type | Constraints | Description |

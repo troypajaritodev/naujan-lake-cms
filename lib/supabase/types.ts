@@ -29,6 +29,7 @@ export type InquiryStatus =
   | "DECLINED"
   | "CANCELLED";
 export type AdvisorySeverity = "CRITICAL" | "WARNING" | "INFO";
+export type AdvisoryCategory = "Wildlife" | "Water" | "Access" | "Operations";
 export type SubscriberStatus = "ACTIVE" | "UNSUBSCRIBED";
 
 type CategoryRow = {
@@ -104,11 +105,15 @@ type AdvisoryRow = {
   title: string;
   slug: string;
   severity: AdvisorySeverity;
+  category: AdvisoryCategory;
   excerpt: string;
   content: string;
+  effective_until: string | null;
+  actions: string[];
   is_active_banner: boolean;
   published_at: string;
   created_at: string;
+  updated_at: string;
 };
 
 type SubscriberRow = {
@@ -164,8 +169,30 @@ export type Database = {
       >;
       advisories: Table<
         AdvisoryRow,
-        Omit<AdvisoryRow, "id" | "is_active_banner" | "published_at" | "created_at"> &
-          Partial<Pick<AdvisoryRow, "id" | "is_active_banner" | "published_at" | "created_at">>
+        Omit<
+          AdvisoryRow,
+          | "id"
+          | "category"
+          | "effective_until"
+          | "actions"
+          | "is_active_banner"
+          | "published_at"
+          | "created_at"
+          | "updated_at"
+        > &
+          Partial<
+            Pick<
+              AdvisoryRow,
+              | "id"
+              | "category"
+              | "effective_until"
+              | "actions"
+              | "is_active_banner"
+              | "published_at"
+              | "created_at"
+              | "updated_at"
+            >
+          >
       >;
       subscribers: Table<
         SubscriberRow,
