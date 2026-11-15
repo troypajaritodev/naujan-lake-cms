@@ -333,6 +333,50 @@ export async function changePassword(
   emit();
 }
 
+/**
+ * Promote a customer to staff, or demote staff back to customer.
+ *
+ * Only staff can call this, and only on someone else: changing your own role
+ * would either hand out access you should not grant yourself or lock you out
+ * of the panel on your next render. The last remaining staff account is also
+ * protected, so the panel can never end up with nobody who can open it.
+ *
+ * When the account store moves to Supabase this becomes
+ * `update public.users set role = $1 where id = $2` behind the admin policy in
+ * `supabase/schema.sql`; the guards below stay as the client-side half.
+ */
+export function updateUserRole(userId: string, role: Role): SessionUser {
+  const session = getSession();
+  if (!session) throw new AuthError("Your session has ended. Sign in again.");
+  if (session.role !== "admin") {
+    throw new AuthError("Only park staff can change an account's role.");
+  }
+  if (session.id === userId) {
+    throw new AuthError("You cannot change your own role. Ask another staff member.");
+  }
+
+  const users = readUsers();
+  const index = users.findIndex((user) => user.id === userId);
+  if (index === -1) throw new AuthError("That account no longer exists.");
+
+  const target = users[index];
+  if (target.role === role) return toSessionUser(target);
+
+  if (role === "visitor" && target.role === "admin") {
+    const staff = users.filter((user) => user.role === "admin").length;
+    if (staff <= 1) {
+      throw new AuthError("This is the last staff account. Promote someone else first.");
+    }
+  }
+
+  users[index] = { ...target, role };
+  writeUsers(users);
+  // The session snapshot re-reads the account table, so a role change is
+  // visible to the guard and the header without a reload.
+  emit();
+  return toSessionUser(users[index]);
+}
+
 export type UserSummary = {
   total: number;
   staff: number;

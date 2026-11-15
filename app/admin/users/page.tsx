@@ -1,10 +1,17 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Search, Users } from "lucide-react";
+import { AlertCircle, Check, Search, Users } from "lucide-react";
 import StatCard from "@/components/admin/stat-card";
 import { useAuth } from "@/components/auth-provider";
-import { summariseUsers, useUsers, type Role } from "@/lib/auth";
+import {
+  AuthError,
+  summariseUsers,
+  updateUserRole,
+  useUsers,
+  type Role,
+  type SessionUser,
+} from "@/lib/auth";
 
 const dateFormat = new Intl.DateTimeFormat("en-PH", {
   day: "numeric",
@@ -30,6 +37,8 @@ const filters: { value: Filter; label: string }[] = [
   { value: "visitor", label: "Customers" },
 ];
 
+const ROLE_ORDER: Role[] = ["visitor", "admin"];
+
 function initials(name: string) {
   return name
     .split(" ")
@@ -44,6 +53,34 @@ export default function AdminUsersPage() {
   const users = useUsers();
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<Filter>("ALL");
+  const [feedback, setFeedback] = useState<{
+    tone: "ok" | "warn";
+    text: string;
+  } | null>(null);
+
+  function changeRole(user: SessionUser, role: Role) {
+    if (user.role === role) return;
+
+    setFeedback(null);
+    try {
+      const updated = updateUserRole(user.id, role);
+      setFeedback({
+        tone: "ok",
+        text:
+          role === "admin"
+            ? `${updated.fullName} can now open this panel and manage the park's content.`
+            : `${updated.fullName} is now a customer and keeps their bookings and profile.`,
+      });
+    } catch (error) {
+      setFeedback({
+        tone: "warn",
+        text:
+          error instanceof AuthError
+            ? error.message
+            : "Could not change that role. Try again.",
+      });
+    }
+  }
 
   const stats = useMemo(() => summariseUsers(users), [users]);
 
@@ -62,6 +99,24 @@ export default function AdminUsersPage() {
 
   return (
     <div className="space-y-6">
+      {feedback && (
+        <p
+          role="status"
+          className={`flex items-start gap-2 rounded-xl px-4 py-3 text-[12.5px] ring-1 ring-inset ${
+            feedback.tone === "ok"
+              ? "bg-moss-50 text-moss-800 ring-moss-600/20"
+              : "bg-alert-50 text-alert-700 ring-alert-500/20"
+          }`}
+        >
+          {feedback.tone === "ok" ? (
+            <Check className="mt-0.5 size-4 shrink-0" strokeWidth={2.4} aria-hidden="true" />
+          ) : (
+            <AlertCircle className="mt-0.5 size-4 shrink-0" strokeWidth={2} aria-hidden="true" />
+          )}
+          {feedback.text}
+        </p>
+      )}
+
       <div className="grid gap-4 sm:grid-cols-3">
         <StatCard
           label="Total accounts"
@@ -154,46 +209,79 @@ export default function AdminUsersPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-ink/6">
-              {visible.map((user) => (
-                <tr key={user.id} className="transition-colors hover:bg-sand-50/70">
-                  <td className="px-5 py-3.5">
-                    <div className="flex items-center gap-3">
-                      <span
-                        aria-hidden="true"
-                        className="grid size-9 shrink-0 place-items-center rounded-full bg-lake-50 font-mono text-[11px] font-medium text-lake-700"
-                      >
-                        {initials(user.fullName)}
-                      </span>
-                      <div className="min-w-0">
-                        <p className="flex items-center gap-2 text-[13.5px] font-medium text-ink">
-                          {user.fullName}
-                          {currentUser?.id === user.id && (
-                            <span className="rounded-full bg-sand-200 px-1.5 py-0.5 text-[9px] font-semibold tracking-[0.1em] text-sand-800 uppercase">
-                              You
-                            </span>
-                          )}
-                        </p>
-                        <p className="truncate text-[12px] text-ink-soft/60">
-                          {user.email}
-                        </p>
+              {visible.map((user) => {
+                const isSelf = currentUser?.id === user.id;
+
+                return (
+                  <tr
+                    key={user.id}
+                    className="transition-colors hover:bg-sand-50/70"
+                  >
+                    <td className="px-5 py-3.5">
+                      <div className="flex items-center gap-3">
+                        <span
+                          aria-hidden="true"
+                          className="grid size-9 shrink-0 place-items-center rounded-full bg-lake-50 font-mono text-[11px] font-medium text-lake-700"
+                        >
+                          {initials(user.fullName)}
+                        </span>
+                        <div className="min-w-0">
+                          <p className="flex items-center gap-2 text-[13.5px] font-medium text-ink">
+                            {user.fullName}
+                            {isSelf && (
+                              <span className="rounded-full bg-sand-200 px-1.5 py-0.5 text-[9px] font-semibold tracking-[0.1em] text-sand-800 uppercase">
+                                You
+                              </span>
+                            )}
+                          </p>
+                          <p className="truncate text-[12px] text-ink-soft/60">
+                            {user.email}
+                          </p>
+                        </div>
                       </div>
-                    </div>
-                  </td>
-                  <td className="px-5 py-3.5">
-                    <span
-                      className={`inline-flex rounded-full px-2.5 py-1 text-[10.5px] font-semibold tracking-[0.1em] uppercase ring-1 ring-inset ${roleStyles[user.role]}`}
-                    >
-                      {roleLabel[user.role]}
-                    </span>
-                  </td>
-                  <td className="px-5 py-3.5 font-mono text-[12px] text-ink-soft/75">
-                    {user.phone || "—"}
-                  </td>
-                  <td className="px-5 py-3.5 text-[12.5px] text-ink-soft/75">
-                    {dateFormat.format(new Date(user.createdAt))}
-                  </td>
-                </tr>
-              ))}
+                    </td>
+                    <td className="px-5 py-3.5">
+                      <select
+                        value={user.role}
+                        onChange={(event) =>
+                          changeRole(user, event.target.value as Role)
+                        }
+                        disabled={isSelf}
+                        aria-label={`Role for ${user.fullName}`}
+                        aria-describedby={
+                          isSelf ? `role-note-${user.id}` : undefined
+                        }
+                        title={
+                          isSelf
+                            ? "You cannot change your own role. Ask another staff member."
+                            : undefined
+                        }
+                        className={`cursor-pointer rounded-full border-0 px-2.5 py-1 text-[10.5px] font-semibold tracking-[0.1em] uppercase ring-1 ring-inset outline-none disabled:cursor-not-allowed disabled:opacity-70 ${roleStyles[user.role]}`}
+                      >
+                        {ROLE_ORDER.map((role) => (
+                          <option key={role} value={role}>
+                            {roleLabel[role]}
+                          </option>
+                        ))}
+                      </select>
+                      {isSelf ? (
+                        <p
+                          id={`role-note-${user.id}`}
+                          className="mt-1.5 text-[10.5px] text-ink-soft/55"
+                        >
+                          Your own role is locked.
+                        </p>
+                      ) : null}
+                    </td>
+                    <td className="px-5 py-3.5 font-mono text-[12px] text-ink-soft/75">
+                      {user.phone || "—"}
+                    </td>
+                    <td className="px-5 py-3.5 text-[12.5px] text-ink-soft/75">
+                      {dateFormat.format(new Date(user.createdAt))}
+                    </td>
+                  </tr>
+                );
+              })}
 
               {visible.length === 0 && (
                 <tr>
@@ -217,9 +305,10 @@ export default function AdminUsersPage() {
         </div>
 
         <p className="border-t border-ink/8 px-5 py-3.5 text-[11.5px] leading-relaxed text-sand-700">
-          Customer accounts are created through public registration. Staff
-          accounts are provisioned by the park office and always keep full
-          access to this panel.
+          Customer accounts are created through public registration. Changing a
+          role here takes effect immediately: staff can open this panel, customers
+          cannot. Your own role is locked, and the last staff account cannot be
+          demoted, so the panel always keeps an administrator.
         </p>
       </section>
     </div>

@@ -111,16 +111,16 @@ export default function AdminShell({ children }: { children: ReactNode }) {
     );
   }
 
-  const active = navigation.find((item) => pathname.startsWith(item.href));
+  // `/admin` is a prefix of every other item, so the landing page only matches
+  // exactly — otherwise the header would read "Overview" on every screen.
+  const isItemActive = (href: string) =>
+    href === "/admin" ? pathname === "/admin" : pathname.startsWith(href);
+
+  const active = navigation.find((item) => isItemActive(item.href));
 
   const navLinks = (onNavigate?: () => void) =>
     navigation.map((item) => {
-      // `/admin` is a prefix of every other item, so the landing page only
-      // matches exactly.
-      const isActive =
-        item.href === "/admin"
-          ? pathname === "/admin"
-          : pathname.startsWith(item.href);
+      const isActive = isItemActive(item.href);
 
       return (
         <Link

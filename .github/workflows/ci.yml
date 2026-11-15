@@ -31,7 +31,9 @@ jobs:
         run: npm run lint
 
       - name: Typecheck
-        run: npx tsc --noEmit
+        # `tsc` needs the route types Next generates (LayoutProps, PageProps and
+        # the typed routes); a fresh checkout has none until `next typegen` runs.
+        run: npx next typegen && npx tsc --noEmit
 
       - name: Build
         run: npm run build

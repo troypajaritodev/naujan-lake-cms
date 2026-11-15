@@ -471,12 +471,16 @@ a coordination layer, not a tour operator.
 | See own inquiry history | ✓ | ✓ |
 | See every inquiry and change its status | — | ✓ |
 | List accounts, see role and join date | — | ✓ |
+| Promote a customer or demote staff (never your own role, never the last staff account) | — | ✓ |
 | View inquiry reports (status mix, demand by package) | — | ✓ |
 | Publish advisories, manage packages | — | ✓ |
 
-Self-registration always writes `role = 'visitor'`; staff accounts are provisioned by the park
-office. Enforcement is layered: the route guard in `components/admin/admin-shell.tsx` redirects
-non-admins, and the database re-checks the same rule through `public.is_admin()` in §7.4.
+Self-registration always writes `role = 'visitor'`. A signed-in staff member can promote an existing
+account from `/admin/users`; the change takes effect on that account's next render. Two rules keep the
+panel usable: nobody can change their own role, so a single administrator can never demote themselves
+by accident, and the last remaining staff account cannot be demoted. Enforcement is layered: the route
+guard in `components/admin/admin-shell.tsx` redirects non-admins, `updateUserRole()` in `lib/auth.ts`
+re-checks the caller, and the database re-checks the same rule through `public.is_admin()` in §7.4.
 
 ---
 
@@ -538,7 +542,7 @@ park office receives an alert email. Declined and already-cancelled requests are
 | Newsletter digest sender (FR-6.3) | `lib/notifications.ts` | Transport ready; audience needs Supabase Auth |
 | Security headers & input cleaning | `next.config.ts`, `lib/sanitize.ts` | Implemented |
 | WCAG 2.1 AA notes | `docs/accessibility.md` | Static pass and Lighthouse 13.6 audit recorded (2026-11-12) |
-| Manage users & roles | `/admin/users` | List and counters implemented; editing planned |
+| Manage users & roles | `/admin/users`, `lib/auth.ts` | Implemented (list, counters, promote/demote with self- and last-admin guards) |
 | Triage inquiries | `/admin/inquiries` | Implemented |
 | View reports | `/admin/inquiries` | Implemented |
 | Publish, edit and archive advisories | `/admin/advisories`, `lib/content-store.ts` | Implemented |
