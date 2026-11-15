@@ -7,6 +7,7 @@
  * admin panel. The API is asynchronous so that swap needs no callsite changes.
  */
 
+import { useSyncExternalStore } from "react";
 import { cleanEmail } from "@/lib/sanitize";
 
 export type SubscriberStatus = "ACTIVE" | "UNSUBSCRIBED";
@@ -22,6 +23,48 @@ export type Subscriber = {
 };
 
 export const SUBSCRIBERS_KEY = "nl.subscribers.v1";
+
+const SEED_SUBSCRIBERS: Subscriber[] = [
+  {
+    id: "sub_seed_1",
+    email: "visitor@example.com",
+    status: "ACTIVE",
+    topics: ["advisories", "tours", "events"],
+    subscribedAt: "2026-10-18T08:15:00.000Z",
+  },
+  {
+    id: "sub_seed_2",
+    email: "ana.reyes@example.com",
+    status: "ACTIVE",
+    topics: ["advisories", "tours"],
+    subscribedAt: "2026-10-25T14:20:00.000Z",
+  },
+  {
+    id: "sub_seed_3",
+    email: "carlos.mendoza@example.com",
+    status: "ACTIVE",
+    topics: ["advisories", "events"],
+    subscribedAt: "2026-11-01T06:45:00.000Z",
+  },
+  {
+    id: "sub_seed_4",
+    email: "liza.bautista@example.com",
+    status: "UNSUBSCRIBED",
+    topics: ["events"],
+    subscribedAt: "2026-09-12T10:00:00.000Z",
+  },
+];
+
+const SERVER_SNAPSHOT: Subscriber[] = [];
+const STORE_EVENT = "nl:subscribers";
+let cachedRaw: string | null = null;
+let cachedList: Subscriber[] = [];
+
+function emit() {
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new Event(STORE_EVENT));
+  }
+}
 
 export const topicLabels: Record<SubscriberTopic, string> = {
   advisories: "Park advisories",
@@ -52,16 +95,55 @@ function canUseStorage() {
 }
 
 function readSubscribers(): Subscriber[] {
-  if (!canUseStorage()) return [];
+  if (!canUseStorage()) return SERVER_SNAPSHOT;
 
   try {
     const raw = window.localStorage.getItem(SUBSCRIBERS_KEY);
-    if (!raw) return [];
+    if (!raw) {
+      const seededJson = JSON.stringify(SEED_SUBSCRIBERS);
+      window.localStorage.setItem(SUBSCRIBERS_KEY, seededJson);
+      cachedRaw = seededJson;
+      cachedList = SEED_SUBSCRIBERS;
+      return cachedList;
+    }
+    if (raw === cachedRaw) return cachedList;
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? (parsed as Subscriber[]) : [];
+    cachedRaw = raw;
+    cachedList = Array.isArray(parsed) ? (parsed as Subscriber[]) : [];
+    return cachedList;
   } catch {
-    return [];
+    return SERVER_SNAPSHOT;
   }
+}
+
+function writeSubscribers(next: Subscriber[]) {
+  if (!canUseStorage()) return;
+  const serialized = JSON.stringify(next);
+  window.localStorage.setItem(SUBSCRIBERS_KEY, serialized);
+  cachedRaw = serialized;
+  cachedList = next;
+  emit();
+}
+
+function subscribeStore(listener: () => void) {
+  if (typeof window === "undefined") return () => {};
+  const onStorage = (event: StorageEvent) => {
+    if (event.key === SUBSCRIBERS_KEY) listener();
+  };
+  window.addEventListener(STORE_EVENT, listener);
+  window.addEventListener("storage", onStorage);
+  return () => {
+    window.removeEventListener(STORE_EVENT, listener);
+    window.removeEventListener("storage", onStorage);
+  };
+}
+
+export function useSubscribers(): Subscriber[] {
+  return useSyncExternalStore(
+    subscribeStore,
+    readSubscribers,
+    () => SERVER_SNAPSHOT,
+  );
 }
 
 export async function listSubscribers(): Promise<Subscriber[]> {
@@ -94,7 +176,7 @@ export async function subscribe(
     throw new SubscribeError("Pick at least one topic.", "topics");
   }
 
-  const subscribers = readSubscribers();
+  const subscribers = [...readSubscribers()];
   const existing = subscribers.find((entry) => entry.email === normalized);
 
   let subscriber: Subscriber;
@@ -125,11 +207,21 @@ export async function subscribe(
     subscribers[index] = subscriber;
   }
 
-  if (canUseStorage()) {
-    window.localStorage.setItem(SUBSCRIBERS_KEY, JSON.stringify(subscribers));
-  }
+  const next = [...subscribers];
+  writeSubscribers(next);
 
   return { subscriber, outcome };
+}
+
+export async function setSubscriberStatus(
+  id: string,
+  status: SubscriberStatus,
+): Promise<Subscriber[]> {
+  const next = readSubscribers().map((entry) =>
+    entry.id === id ? { ...entry, status } : entry,
+  );
+  writeSubscribers(next);
+  return next;
 }
 
 export async function unsubscribe(email: string): Promise<boolean> {
@@ -139,11 +231,10 @@ export async function unsubscribe(email: string): Promise<boolean> {
 
   if (index === -1) return false;
 
-  subscribers[index] = { ...subscribers[index], status: "UNSUBSCRIBED" };
-
-  if (canUseStorage()) {
-    window.localStorage.setItem(SUBSCRIBERS_KEY, JSON.stringify(subscribers));
-  }
+  const next = subscribers.map((entry, i) =>
+    i === index ? { ...entry, status: "UNSUBSCRIBED" as const } : entry,
+  );
+  writeSubscribers(next);
 
   return true;
 }

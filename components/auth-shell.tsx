@@ -27,8 +27,8 @@ const perks = [
   },
   {
     icon: ShieldCheck,
-    title: "Park-office only",
-    body: "No card details are collected here — fees settle on site.",
+    title: "Track every step",
+    body: "Follow your booking & first payment from Pending to On Process and Confirmed.",
   },
 ];
 

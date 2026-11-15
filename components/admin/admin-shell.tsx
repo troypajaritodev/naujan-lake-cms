@@ -10,6 +10,7 @@ import {
   LayoutDashboard,
   Loader2,
   LogOut,
+  Mail,
   Megaphone,
   Menu,
   Route,
@@ -36,9 +37,15 @@ const navigation = [
   },
   {
     href: "/admin/inquiries",
-    label: "Inquiries",
-    hint: "Requests and reports",
+    label: "Bookings",
+    hint: "Deposits, status & tracking",
     icon: Inbox,
+  },
+  {
+    href: "/admin/subscribers",
+    label: "Subscribers",
+    hint: "Newsletter & advisory alerts",
+    icon: Mail,
   },
   {
     href: "/admin/advisories",
@@ -179,6 +186,12 @@ export default function AdminShell({ children }: { children: ReactNode }) {
       </div>
 
       <div className="mt-4 flex flex-wrap gap-2">
+        <Link
+          href="/account"
+          className="inline-flex items-center gap-1.5 rounded-full border border-white/20 px-3 py-1.5 text-[11.5px] font-medium text-sand-100 transition-colors hover:bg-white/10"
+        >
+          My account
+        </Link>
         <Link
           href="/"
           className="inline-flex items-center gap-1.5 rounded-full border border-white/20 px-3 py-1.5 text-[11.5px] font-medium text-sand-100 transition-colors hover:bg-white/10"

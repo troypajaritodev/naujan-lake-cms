@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import BrandMark from "@/components/brand-mark";
 import { useAuth } from "@/components/auth-provider";
+import { CANCELLABLE_STATUSES, useInquiries } from "@/lib/inquiries";
 import { navigation, site } from "@/lib/site";
 
 function initials(name: string) {
@@ -37,6 +38,19 @@ export default function SiteHeader() {
   const [accountOpen, setAccountOpen] = useState(false);
   const accountRef = useRef<HTMLDivElement>(null);
   const { user, ready, signOut } = useAuth();
+  const inquiries = useInquiries();
+
+  const myActiveBookings =
+    ready && user
+      ? inquiries.filter(
+          (entry) =>
+            entry.userEmail === user.email.toLowerCase() &&
+            CANCELLABLE_STATUSES.includes(entry.status),
+        )
+      : [];
+  const hasProgressAlert = myActiveBookings.some(
+    (entry) => entry.status === "ON_PROCESS" || entry.status === "CONFIRMED",
+  );
 
   const accountLabel =
     ready && user ? user.fullName.split(" ")[0] : "Sign in";
@@ -214,6 +228,22 @@ export default function SiteHeader() {
                   {initials(user.fullName)}
                 </span>
                 <span className="max-w-[7.5rem] truncate">{accountLabel}</span>
+                {myActiveBookings.length > 0 && (
+                  <span
+                    className={`rounded-full px-1.5 py-0.5 font-mono text-[10px] font-semibold ${
+                      hasProgressAlert
+                        ? onDark
+                          ? "bg-moss-400/25 text-sand-50"
+                          : "bg-lake-700 text-sand-50"
+                        : onDark
+                          ? "bg-white/15 text-sand-100"
+                          : "bg-sand-200 text-ink"
+                    }`}
+                    title={`${myActiveBookings.length} active booking${myActiveBookings.length === 1 ? "" : "s"}`}
+                  >
+                    {myActiveBookings.length}
+                  </span>
+                )}
                 <ChevronDown
                   className={`size-3.5 transition-transform duration-300 ${accountOpen ? "rotate-180" : ""}`}
                   strokeWidth={2}
@@ -248,7 +278,12 @@ export default function SiteHeader() {
                       className="flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-[13px] font-medium text-ink-soft transition-colors hover:bg-sand-100 hover:text-ink"
                     >
                       <UserRound className="size-4 text-sand-600" strokeWidth={1.8} aria-hidden="true" />
-                      My account
+                      <span>My account</span>
+                      {myActiveBookings.length > 0 && (
+                        <span className="ml-auto rounded-full bg-lake-100 px-2 py-0.5 text-[10px] font-semibold text-lake-800">
+                          {myActiveBookings.length} active
+                        </span>
+                      )}
                     </Link>
                     {user.role === "admin" && (
                       <Link
@@ -397,6 +432,11 @@ export default function SiteHeader() {
             >
               <User className="size-4" strokeWidth={2} aria-hidden="true" />
               {ready && user ? `Signed in as ${accountLabel}` : "Sign in"}
+              {myActiveBookings.length > 0 && (
+                <span className="rounded-full bg-white/15 px-2 py-0.5 text-[10px] font-semibold text-sand-50">
+                  {myActiveBookings.length} active
+                </span>
+              )}
             </Link>
             {ready && user && (
               <button

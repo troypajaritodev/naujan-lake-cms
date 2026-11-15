@@ -8,12 +8,36 @@
  * other.
  */
 
-import type { Inquiry } from "@/lib/inquiries";
+import type {
+  Inquiry,
+  PaymentMethod,
+  PaymentStatus,
+} from "@/lib/inquiries";
 import { cleanEmail, cleanPhone, cleanText } from "@/lib/sanitize";
 
 function asString(value: unknown, maxLength: number): string {
   return typeof value === "string" ? cleanText(value, maxLength) : "";
 }
+
+function asNonNegativeNumber(value: unknown): number | undefined {
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
+    return undefined;
+  }
+  return Math.round(value);
+}
+
+const VALID_METHODS: readonly PaymentMethod[] = [
+  "GCASH",
+  "MAYA",
+  "BANK_TRANSFER",
+];
+
+const VALID_PAYMENT_STATUSES: readonly PaymentStatus[] = [
+  "UNPAID",
+  "PENDING_VERIFICATION",
+  "VERIFIED",
+  "REFUNDED",
+];
 
 export function parseInquiryPayload(
   payload: Record<string, unknown>,
@@ -36,6 +60,26 @@ export function parseInquiryPayload(
     return null;
   }
 
+  const paymentMethod = VALID_METHODS.includes(
+    payload.paymentMethod as PaymentMethod,
+  )
+    ? (payload.paymentMethod as PaymentMethod)
+    : undefined;
+
+  const paymentStatus = VALID_PAYMENT_STATUSES.includes(
+    payload.paymentStatus as PaymentStatus,
+  )
+    ? (payload.paymentStatus as PaymentStatus)
+    : undefined;
+
+  const ratePerPerson = asNonNegativeNumber(payload.ratePerPerson);
+  const totalAmount = asNonNegativeNumber(payload.totalAmount);
+  const firstPaymentAmount = asNonNegativeNumber(payload.firstPaymentAmount);
+  const balanceAmount = asNonNegativeNumber(payload.balanceAmount);
+  const paymentReference = asString(payload.paymentReference, 64);
+  const paymentAccountName = asString(payload.paymentAccountName, 120);
+  const adminNote = asString(payload.adminNote, 500);
+
   return {
     id: asString(payload.id, 64) || reference,
     reference,
@@ -50,5 +94,14 @@ export function parseInquiryPayload(
     message: asString(payload.message, 2000),
     status: "PENDING",
     createdAt: asString(payload.createdAt, 40) || new Date().toISOString(),
+    ...(ratePerPerson !== undefined ? { ratePerPerson } : {}),
+    ...(totalAmount !== undefined ? { totalAmount } : {}),
+    ...(firstPaymentAmount !== undefined ? { firstPaymentAmount } : {}),
+    ...(balanceAmount !== undefined ? { balanceAmount } : {}),
+    ...(paymentMethod ? { paymentMethod } : {}),
+    ...(paymentReference ? { paymentReference } : {}),
+    ...(paymentAccountName ? { paymentAccountName } : {}),
+    ...(paymentStatus ? { paymentStatus } : {}),
+    ...(adminNote ? { adminNote } : {}),
   };
 }

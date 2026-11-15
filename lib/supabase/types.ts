@@ -24,10 +24,18 @@ export type Seasonality = "RESIDENT" | "MIGRATORY" | "SEASONAL";
 export type TourDifficulty = "EASY" | "MODERATE" | "CHALLENGING";
 export type InquiryStatus =
   | "PENDING"
+  | "ON_PROCESS"
   | "CONTACTED"
   | "CONFIRMED"
+  | "COMPLETED"
   | "DECLINED"
   | "CANCELLED";
+export type PaymentMethod = "GCASH" | "MAYA" | "BANK_TRANSFER";
+export type PaymentStatus =
+  | "UNPAID"
+  | "PENDING_VERIFICATION"
+  | "VERIFIED"
+  | "REFUNDED";
 export type AdvisorySeverity = "CRITICAL" | "WARNING" | "INFO";
 export type AdvisoryCategory = "Wildlife" | "Water" | "Access" | "Operations";
 export type SubscriberStatus = "ACTIVE" | "UNSUBSCRIBED";
@@ -92,9 +100,24 @@ type TourInquiryRow = {
   party_size: number;
   notes: string | null;
   status: InquiryStatus;
+  on_process_at: string | null;
   confirmed_at: string | null;
+  completed_at: string | null;
   cancelled_at: string | null;
   decided_by: "visitor" | "park" | null;
+  rate_per_person: number;
+  total_amount: number;
+  first_payment_amount: number;
+  balance_amount: number;
+  payment_method: PaymentMethod | null;
+  payment_reference: string | null;
+  payment_account_name: string | null;
+  payment_status: PaymentStatus;
+  payment_submitted_at: string | null;
+  payment_verified_at: string | null;
+  admin_note: string | null;
+  timeline: Json;
+  messages: Json;
   created_at: string;
   updated_at: string;
 };
@@ -213,6 +236,8 @@ export type Database = {
       seasonality: Seasonality;
       tour_difficulty: TourDifficulty;
       inquiry_status: InquiryStatus;
+      payment_method: PaymentMethod;
+      payment_status: PaymentStatus;
       advisory_severity: AdvisorySeverity;
       subscriber_status: SubscriberStatus;
     };

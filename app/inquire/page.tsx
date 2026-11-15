@@ -7,25 +7,25 @@ import { getTours } from "@/lib/tours";
 export const metadata: Metadata = {
   title: "Plan a visit",
   description:
-    "Send a booking inquiry for a guided eco-tour at Naujan Lake National Park. The park office confirms availability and fees are settled on site.",
+    "Book a guided eco-tour at Naujan Lake National Park with a first payment deposit and track your booking status from Pending to On Process and Confirmed.",
   alternates: { canonical: "/inquire" },
 };
 
 const steps = [
   {
     icon: ClipboardCheck,
-    title: "Send the request",
-    body: "Pick a package, a date and how many are coming. One form, no payment.",
+    title: "Book & send first payment",
+    body: "Pick a package, date, and party size, then submit your 50% first payment (or full amount) via GCash, Maya, or Bank Transfer.",
   },
   {
     icon: Clock3,
-    title: "Wait for confirmation",
-    body: "The park office checks boat and guide availability, then replies by email.",
+    title: "Pending → On Process",
+    body: "Park staff verify your deposit and accept your booking. Your status updates from Pending to On Process in My Account while boat & guide are arranged.",
   },
   {
     icon: Wallet,
-    title: "Settle at the jetty",
-    body: "Bring the tariff in cash on the day. The environmental fee is already included.",
+    title: "Confirm & settle balance",
+    body: "Once marked Confirmed, bring your booking reference and settle any remaining balance at the park jetty on arrival.",
   },
 ];
 
@@ -65,8 +65,9 @@ export default function InquirePage({ searchParams }: InquirePageProps) {
             <span className="text-reed-200 italic">we&rsquo;ll hold the boat.</span>
           </h1>
           <p className="mt-5 max-w-lg text-[15px] leading-[1.75] text-sand-200/75">
-            Inquiries are reviewed by the park office, not an automated booking
-            engine. Nothing is charged through this portal.
+            Submit your travel details with a reservation first payment, then
+            track your booking live from Pending to On Process and Confirmed in
+            your account.
           </p>
         </div>
       </section>

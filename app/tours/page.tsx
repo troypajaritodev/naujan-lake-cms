@@ -148,8 +148,9 @@ export default async function ToursPage() {
           </div>
 
           <p className="mt-10 text-[12.5px] leading-relaxed text-sand-700">
-            Booking is by inquiry only. Payment is settled on site at the park
-            office — no online transaction is processed through this portal.
+            Booking requires a 50% (or full) first payment deposit via GCash,
+            Maya, or Bank Transfer. Once submitted, track your reservation
+            from Pending → On Process → Confirmed inside My Account.
           </p>
         </div>
       </section>

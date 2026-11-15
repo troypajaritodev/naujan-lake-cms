@@ -17,6 +17,10 @@ export type SessionUser = {
   phone: string;
   role: Role;
   createdAt: string;
+  isActive?: boolean;
+  lastLoginAt?: string;
+  address?: string;
+  emergencyContact?: string;
 };
 
 type StoredUser = SessionUser & { passwordHash: string };
@@ -129,6 +133,10 @@ function toSessionUser(user: StoredUser): SessionUser {
     phone: user.phone,
     role: user.role,
     createdAt: user.createdAt,
+    isActive: user.isActive ?? true,
+    ...(user.lastLoginAt ? { lastLoginAt: user.lastLoginAt } : {}),
+    ...(user.address ? { address: user.address } : {}),
+    ...(user.emergencyContact ? { emergencyContact: user.emergencyContact } : {}),
   };
 }
 
@@ -142,9 +150,10 @@ export function getSession(): SessionUser | null {
     const parsed = JSON.parse(raw) as { id?: string };
     if (!parsed?.id) return null;
 
-    // Re-read the record so a renamed profile or role change is reflected.
+    // Re-read the record so a renamed profile, role change, or suspension is reflected.
     const stored = readUsers().find((user) => user.id === parsed.id);
-    return stored ? toSessionUser(stored) : null;
+    if (!stored || stored.isActive === false) return null;
+    return toSessionUser(stored);
   } catch {
     return null;
   }
@@ -262,9 +271,17 @@ export async function signIn(email: string, password: string): Promise<SessionUs
     throw new AuthError("Enter your email and password.", "email");
   }
 
-  const user = readUsers().find((entry) => entry.email === normalized);
+  const users = readUsers();
+  const index = users.findIndex((entry) => entry.email === normalized);
+  const user = index >= 0 ? users[index] : undefined;
   if (!user) {
     throw new AuthError("No account matches that email.", "email");
+  }
+  if (user.isActive === false) {
+    throw new AuthError(
+      "This account has been suspended. Contact the park office.",
+      "email",
+    );
   }
 
   const digest = await hashPassword(normalized, password);
@@ -272,8 +289,14 @@ export async function signIn(email: string, password: string): Promise<SessionUs
     throw new AuthError("That password is not correct.", "password");
   }
 
-  setSession(user);
-  return toSessionUser(user);
+  const signedInUser: StoredUser = {
+    ...user,
+    lastLoginAt: new Date().toISOString(),
+  };
+  users[index] = signedInUser;
+  writeUsers(users);
+  setSession(signedInUser);
+  return toSessionUser(signedInUser);
 }
 
 export function signOut() {
@@ -283,17 +306,36 @@ export function signOut() {
 export type ProfileInput = {
   fullName: string;
   phone: string;
+  address?: string;
+  emergencyContact?: string;
 };
 
-export function updateProfile({ fullName, phone }: ProfileInput): SessionUser {
+export function updateProfile({
+  fullName,
+  phone,
+  address,
+  emergencyContact,
+}: ProfileInput): SessionUser {
   const session = getSession();
   if (!session) throw new AuthError("Your session has ended. Sign in again.");
 
   const name = fullName.trim();
   if (name.length < 2) throw new AuthError("Enter your full name.", "fullName");
 
+  const nextAddress = address !== undefined ? address.trim().slice(0, 160) : undefined;
+  const nextEmergency =
+    emergencyContact !== undefined ? emergencyContact.trim().slice(0, 120) : undefined;
+
   const users = readUsers().map((user) =>
-    user.id === session.id ? { ...user, fullName: name, phone: phone.trim() } : user,
+    user.id === session.id
+      ? {
+          ...user,
+          fullName: name,
+          phone: phone.trim(),
+          ...(nextAddress !== undefined ? { address: nextAddress } : {}),
+          ...(nextEmergency !== undefined ? { emergencyContact: nextEmergency } : {}),
+        }
+      : user,
   );
   writeUsers(users);
   emit();
@@ -377,10 +419,42 @@ export function updateUserRole(userId: string, role: Role): SessionUser {
   return toSessionUser(users[index]);
 }
 
+export function setUserActive(userId: string, isActive: boolean): SessionUser {
+  const session = getSession();
+  if (!session) throw new AuthError("Your session has ended. Sign in again.");
+  if (session.role !== "admin") {
+    throw new AuthError("Only park staff can change account status.");
+  }
+  if (session.id === userId && !isActive) {
+    throw new AuthError("You cannot suspend your own account.");
+  }
+
+  const users = readUsers();
+  const index = users.findIndex((user) => user.id === userId);
+  if (index === -1) throw new AuthError("That account no longer exists.");
+
+  const target = users[index];
+  if (!isActive && target.role === "admin") {
+    const activeAdmins = users.filter(
+      (user) => user.role === "admin" && user.isActive !== false,
+    ).length;
+    if (activeAdmins <= 1) {
+      throw new AuthError("This is the last active staff account.");
+    }
+  }
+
+  users[index] = { ...target, isActive };
+  writeUsers(users);
+  emit();
+  return toSessionUser(users[index]);
+}
+
 export type UserSummary = {
   total: number;
   staff: number;
   customers: number;
+  active: number;
+  suspended: number;
 };
 
 /** Every account, newest first — password digests are stripped. */
@@ -435,5 +509,12 @@ export function useUsers(): SessionUser[] {
 
 export function summariseUsers(users: SessionUser[]): UserSummary {
   const staff = users.filter((user) => user.role === "admin").length;
-  return { total: users.length, staff, customers: users.length - staff };
+  const suspended = users.filter((user) => user.isActive === false).length;
+  return {
+    total: users.length,
+    staff,
+    customers: users.length - staff,
+    active: users.length - suspended,
+    suspended,
+  };
 }

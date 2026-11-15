@@ -11,6 +11,7 @@
 import { cacheLife, cacheTag } from "next/cache";
 import { getSupabaseClient, type Tables } from "@/lib/supabase";
 import { fetchOrFallback, queryError } from "@/lib/supabase/query";
+import { photoFor } from "@/lib/species-photos";
 import {
   type ConservationStatus,
   type Seasonality,
@@ -333,7 +334,17 @@ function toSpecies(
     seasonality: row.seasonality,
     habitat: row.habitat,
     description: row.description,
+    photo: photoFor(row.slug, row.featured_image),
   };
+}
+
+/**
+ * Attach the curated photograph to a seed row. Photos live in a slug-keyed
+ * registry rather than being duplicated into every seed literal, so the same
+ * credit is used whether the row came from Supabase or the offline seeds.
+ */
+function withPhoto(entry: Species): Species {
+  return { ...entry, photo: photoFor(entry.slug) };
 }
 
 /** Taxonomy groups, ordered for display. */
@@ -367,7 +378,7 @@ export async function getSpecies(): Promise<Species[]> {
   cacheTag("species");
 
   const client = getSupabaseClient();
-  if (!client) return seedSpecies;
+  if (!client) return seedSpecies.map(withPhoto);
 
   return fetchOrFallback(
     "species",
@@ -385,9 +396,9 @@ export async function getSpecies(): Promise<Species[]> {
       if (error) throw queryError("species", error.message);
       return data && data.length > 0
         ? data.map((row) => toSpecies(row, groupSlugById))
-        : seedSpecies;
+        : seedSpecies.map(withPhoto);
     },
-    () => seedSpecies,
+    () => seedSpecies.map(withPhoto),
   );
 }
 

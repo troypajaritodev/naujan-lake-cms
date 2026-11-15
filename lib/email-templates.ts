@@ -1,9 +1,8 @@
 /**
- * Plain-text email bodies for the two notification flows.
+ * Plain-text email bodies for the notification flows.
  *
  * Plain text on purpose: it renders in every client, survives the Resend
- * dashboard untouched, and keeps the templates small enough to audit. HTML can
- * be layered on later without changing the callers.
+ * dashboard untouched, and keeps the templates small enough to audit.
  */
 
 import type { AdvisoryPreview } from "@/lib/advisories";
@@ -23,7 +22,29 @@ function firstName(fullName: string): string {
   return fullName.trim().split(/\s+/)[0] || "there";
 }
 
+function formatPhp(amount: number): string {
+  return `PHP ${amount.toLocaleString("en-PH")}`;
+}
+
 function inquiryFacts(inquiry: Inquiry): string[] {
+  const paymentLines: string[] = [];
+  if (typeof inquiry.totalAmount === "number" && inquiry.totalAmount > 0) {
+    paymentLines.push(`Total tariff: ${formatPhp(inquiry.totalAmount)}`);
+  }
+  if (
+    typeof inquiry.firstPaymentAmount === "number" &&
+    inquiry.firstPaymentAmount > 0
+  ) {
+    paymentLines.push(
+      `First payment: ${formatPhp(inquiry.firstPaymentAmount)}${
+        inquiry.paymentMethod ? ` (${inquiry.paymentMethod})` : ""
+      }${inquiry.paymentReference ? ` · Ref ${inquiry.paymentReference}` : ""}`,
+    );
+  }
+  if (typeof inquiry.balanceAmount === "number") {
+    paymentLines.push(`Balance on arrival: ${formatPhp(inquiry.balanceAmount)}`);
+  }
+
   return [
     `Reference: ${inquiry.reference}`,
     `Package: ${inquiry.tourTitle}`,
@@ -32,27 +53,27 @@ function inquiryFacts(inquiry: Inquiry): string[] {
     `Name: ${inquiry.fullName}`,
     `Email: ${inquiry.email}`,
     ...(inquiry.phone ? [`Phone: ${inquiry.phone}`] : []),
+    ...paymentLines,
     ...(inquiry.message ? [`Message: ${inquiry.message}`] : []),
+    ...(inquiry.adminNote ? [`Park note: ${inquiry.adminNote}`] : []),
   ];
 }
 
-/** Sent to the visitor as soon as the inquiry is filed (FR-2.3). */
+/** Sent to the visitor as soon as the booking & first payment are filed. */
 export function inquiryConfirmationEmail(inquiry: Inquiry): EmailMessage {
   return {
     to: inquiry.email,
-    subject: `Inquiry received · ${inquiry.reference}`,
+    subject: `Booking received · ${inquiry.reference}`,
     replyTo: PARK_INBOX,
     text: [
       `Hello ${firstName(inquiry.fullName)},`,
       "",
-      `We have your booking inquiry for ${inquiry.tourTitle} on ${inquiry.preferredDate} for ${inquiry.partySize} guest${inquiry.partySize === 1 ? "" : "s"}.`,
+      `We have received your booking and first payment submission for ${inquiry.tourTitle} on ${inquiry.preferredDate} for ${inquiry.partySize} guest${inquiry.partySize === 1 ? "" : "s"}.`,
       "",
       ...inquiryFacts(inquiry),
       "",
-      "The park office replies within two working days to confirm the guides and the boat.",
-      "Nothing is paid online — the tariff is settled at the jetty on the day.",
-      "",
-      `If the date no longer works, reply to this message or write to ${PARK_INBOX}.`,
+      "Status: Pending review. The park office will verify your first payment and move your booking to On Process once accepted.",
+      `Track your booking status live in your account: ${SITE_URL}/account`,
       "",
       PARK_NAME,
       `${SITE_URL}/tours`,
@@ -65,21 +86,45 @@ export function inquiryNotificationEmail(inquiry: Inquiry): EmailMessage {
   return {
     to: PARK_INBOX,
     replyTo: inquiry.email,
-    subject: `New booking inquiry · ${inquiry.reference} · ${inquiry.tourTitle}`,
+    subject: `New booking & first payment · ${inquiry.reference} · ${inquiry.tourTitle}`,
     text: [
-      "A visitor filed a booking inquiry.",
+      "A visitor filed a tour booking with first payment details.",
       "",
       ...inquiryFacts(inquiry),
       "",
-      `Triage it in the admin queue: ${SITE_URL}/admin/inquiries`,
+      `Accept & verify in the admin queue: ${SITE_URL}/admin/inquiries`,
     ].join("\n"),
   };
 }
 
 /**
- * Sent to the visitor when the park accepts the request. This is the "yes"
- * that turns an inquiry into a booking, so it repeats the reference, date and
- * party size they need at the jetty.
+ * Sent to the visitor when the admin accepts the pending request and moves it
+ * to On Process (boat, guide, and permit preparation).
+ */
+export function inquiryOnProcessEmail(inquiry: Inquiry): EmailMessage {
+  return {
+    to: inquiry.email,
+    subject: `Booking accepted & on process · ${inquiry.reference}`,
+    replyTo: PARK_INBOX,
+    text: [
+      `Hello ${firstName(inquiry.fullName)},`,
+      "",
+      `Your booking for ${inquiry.tourTitle} on ${inquiry.preferredDate} has been accepted by the park office and is now On Process.`,
+      "",
+      ...inquiryFacts(inquiry),
+      "",
+      "Our staff is now assigning your boat, licensed guide, and entry permit.",
+      `Track your live progress in My Account: ${SITE_URL}/account`,
+      "",
+      PARK_NAME,
+      `${SITE_URL}/tours`,
+    ].join("\n"),
+  };
+}
+
+/**
+ * Sent to the visitor when the park confirms the booking is cleared for
+ * departure.
  */
 export function inquiryConfirmedEmail(inquiry: Inquiry): EmailMessage {
   return {
@@ -89,14 +134,35 @@ export function inquiryConfirmedEmail(inquiry: Inquiry): EmailMessage {
     text: [
       `Hello ${firstName(inquiry.fullName)},`,
       "",
-      `Good news — the park office has confirmed your booking for ${inquiry.tourTitle} on ${inquiry.preferredDate} for ${inquiry.partySize} guest${inquiry.partySize === 1 ? "" : "s"}.`,
+      `Good news — your booking for ${inquiry.tourTitle} on ${inquiry.preferredDate} for ${inquiry.partySize} guest${inquiry.partySize === 1 ? "" : "s"} is now Confirmed.`,
       "",
       ...inquiryFacts(inquiry),
       "",
       "Please arrive at the jump-off point 15 minutes before departure and bring this reference.",
-      "Nothing is paid online — the tariff is settled at the jetty on the day.",
+      "Any remaining balance is settled at the park office before boarding.",
       "",
-      `If your plans change, withdraw the request from your account: ${SITE_URL}/account`,
+      `View your booking pass and tracker in My Account: ${SITE_URL}/account`,
+      "",
+      PARK_NAME,
+      `${SITE_URL}/tours`,
+    ].join("\n"),
+  };
+}
+
+/** Sent when the trip is marked Completed by the park office. */
+export function inquiryCompletedEmail(inquiry: Inquiry): EmailMessage {
+  return {
+    to: inquiry.email,
+    subject: `Trip completed · ${inquiry.reference}`,
+    replyTo: PARK_INBOX,
+    text: [
+      `Hello ${firstName(inquiry.fullName)},`,
+      "",
+      `Thank you for visiting ${PARK_NAME} for ${inquiry.tourTitle}. Your booking ${inquiry.reference} is now marked Completed.`,
+      "",
+      ...inquiryFacts(inquiry),
+      "",
+      `View your trip record in My Account: ${SITE_URL}/account`,
       "",
       PARK_NAME,
       `${SITE_URL}/tours`,
@@ -108,7 +174,7 @@ export function inquiryConfirmedEmail(inquiry: Inquiry): EmailMessage {
 export function inquiryDeclinedEmail(inquiry: Inquiry): EmailMessage {
   return {
     to: inquiry.email,
-    subject: `Update on your inquiry · ${inquiry.reference}`,
+    subject: `Update on your booking · ${inquiry.reference}`,
     replyTo: PARK_INBOX,
     text: [
       `Hello ${firstName(inquiry.fullName)},`,
@@ -117,8 +183,8 @@ export function inquiryDeclinedEmail(inquiry: Inquiry): EmailMessage {
       "",
       ...inquiryFacts(inquiry),
       "",
-      "No payment has been taken. Reply to this message to ask about another date, or send a fresh request:",
-      `${SITE_URL}/inquire`,
+      "If you sent a first payment, the park office will coordinate your refund or transfer to another date.",
+      `Send a new booking request: ${SITE_URL}/inquire`,
       "",
       PARK_NAME,
       `${SITE_URL}/tours`,
@@ -130,7 +196,7 @@ export function inquiryDeclinedEmail(inquiry: Inquiry): EmailMessage {
 export function inquiryCancelledEmail(inquiry: Inquiry): EmailMessage {
   return {
     to: inquiry.email,
-    subject: `Inquiry cancelled · ${inquiry.reference}`,
+    subject: `Booking cancelled · ${inquiry.reference}`,
     replyTo: PARK_INBOX,
     text: [
       `Hello ${firstName(inquiry.fullName)},`,
@@ -156,7 +222,7 @@ export function inquiryCancellationAlertEmail(inquiry: Inquiry): EmailMessage {
   return {
     to: PARK_INBOX,
     replyTo: inquiry.email,
-    subject: `Inquiry withdrawn · ${inquiry.reference} · ${inquiry.tourTitle}`,
+    subject: `Booking withdrawn · ${inquiry.reference} · ${inquiry.tourTitle}`,
     text: [
       "The visitor withdrew this booking request.",
       "",

@@ -1,17 +1,44 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { AlertCircle, BellRing, Check, Inbox } from "lucide-react";
-import StatCard from "@/components/admin/stat-card";
+import Image from "next/image";
 import {
+  AlertCircle,
+  BellRing,
+  Check,
+  CheckCircle2,
+  CreditCard,
+  Download,
+  Eye,
+  Inbox,
+  Loader2,
+  MessageSquareText,
+  Search,
+  Send,
+  SlidersHorizontal,
+  X,
+} from "lucide-react";
+import StatCard from "@/components/admin/stat-card";
+import { useAuth } from "@/components/auth-provider";
+import { downloadCsv } from "@/lib/csv";
+import {
+  acceptInquiry,
+  addInquiryMessage,
+  getReservedSeatsForDate,
+  InquiryError,
   setInquiryStatus,
+  updateInquiryAdminNote,
+  updateInquiryPaymentStatus,
   useInquiries,
   type Inquiry,
   type InquiryStatus,
+  type PaymentStatus,
 } from "@/lib/inquiries";
 import {
   INQUIRY_STATUS_META,
   INQUIRY_STATUS_ORDER,
+  PAYMENT_METHOD_META,
+  PAYMENT_STATUS_META,
 } from "@/lib/inquiry-status";
 import {
   bookingCountLabel,
@@ -19,10 +46,24 @@ import {
   useInquiryAlerts,
 } from "@/lib/inquiry-alerts";
 
+const peso = new Intl.NumberFormat("en-PH", {
+  style: "currency",
+  currency: "PHP",
+  maximumFractionDigits: 0,
+});
+
 const dateFormat = new Intl.DateTimeFormat("en-PH", {
   day: "numeric",
   month: "short",
   year: "numeric",
+});
+
+const dateTimeFormat = new Intl.DateTimeFormat("en-PH", {
+  day: "numeric",
+  month: "short",
+  year: "numeric",
+  hour: "numeric",
+  minute: "2-digit",
 });
 
 function formatDay(iso: string) {
@@ -36,13 +77,23 @@ function formatStamp(iso?: string) {
   return Number.isNaN(parsed.getTime()) ? null : dateFormat.format(parsed);
 }
 
+function formatDateTime(iso?: string) {
+  if (!iso) return "—";
+  const parsed = new Date(iso);
+  return Number.isNaN(parsed.getTime()) ? "—" : dateTimeFormat.format(parsed);
+}
+
 /** The line under the status chip: what happened, and when. */
 function statusDetail(inquiry: Inquiry) {
   const at = formatStamp(inquiry.updatedAt);
 
   switch (inquiry.status) {
+    case "ON_PROCESS":
+      return at ? `Accepted · On Process (${at})` : INQUIRY_STATUS_META.ON_PROCESS.blurb;
     case "CONFIRMED":
-      return at ? `Accepted ${at}` : "Accepted by the park office";
+      return at ? `Confirmed ${at}` : "Confirmed by the park office";
+    case "COMPLETED":
+      return at ? `Completed ${at}` : "Trip completed";
     case "DECLINED":
       return at ? `Declined ${at}` : INQUIRY_STATUS_META.DECLINED.blurb;
     case "CANCELLED":
@@ -86,11 +137,15 @@ function emailFeedback(
   outcome: EmailOutcome | null,
 ) {
   const noun =
-    status === "CONFIRMED"
-      ? "Booking confirmation"
-      : status === "DECLINED"
-        ? "Decline notice"
-        : "Cancellation notice";
+    status === "ON_PROCESS"
+      ? "On Process update"
+      : status === "CONFIRMED"
+        ? "Booking confirmation"
+        : status === "COMPLETED"
+          ? "Trip completion notice"
+          : status === "DECLINED"
+            ? "Decline notice"
+            : "Cancellation notice";
 
   if (!outcome) {
     return {
@@ -106,7 +161,7 @@ function emailFeedback(
   if (outcome.reason === "demo") {
     return {
       tone: "ok" as const,
-      text: `${noun} printed to the server console (demo mode).`,
+      text: `${INQUIRY_STATUS_META[status].label} saved (${noun} logged in demo console).`,
     };
   }
 
@@ -123,7 +178,6 @@ const RELATIVE_STEPS: [Intl.RelativeTimeFormatUnit, number][] = [
   ["minute", 60_000],
 ];
 
-/** "3 hours ago" / "just now" — keeps the banner honest about freshness. */
 function arrivedAt(iso: string) {
   const parsed = Date.parse(iso);
   if (!Number.isFinite(parsed)) return "";
@@ -140,27 +194,86 @@ function arrivedAt(iso: string) {
   return "just now";
 }
 
+type PaymentFilter = "ALL" | "PENDING_VERIFICATION" | "VERIFIED" | "UNPAID";
+
 export default function AdminInquiriesPage() {
+  const { user: currentUser } = useAuth();
   const inquiries = useInquiries();
   const { unread, unreadIds, latestUnread } = useInquiryAlerts();
   const [pendingId, setPendingId] = useState<string | null>(null);
+  const [statusFilter, setStatusFilter] = useState<"ALL" | InquiryStatus>("ALL");
+  const [paymentFilter, setPaymentFilter] = useState<PaymentFilter>("ALL");
+  const [query, setQuery] = useState("");
+  const [inspectId, setInspectId] = useState<string | null>(null);
+  const [noteDraft, setNoteDraft] = useState("");
+  const [noteDirty, setNoteDirty] = useState(false);
+  const [replyDraft, setReplyDraft] = useState("");
+  const [replyPending, setReplyPending] = useState(false);
   const [feedback, setFeedback] = useState<{
     tone: "ok" | "warn";
     text: string;
   } | null>(null);
 
-  async function changeStatus(inquiry: Inquiry, status: InquiryStatus) {
-    if (inquiry.status === status) return;
+  const inspected = useMemo(
+    () => inquiries.find((entry) => entry.id === inspectId) ?? null,
+    [inquiries, inspectId],
+  );
+
+  function openInspector(inquiry: Inquiry) {
+    setInspectId(inquiry.id);
+    setNoteDraft(inquiry.adminNote ?? "");
+    setNoteDirty(false);
+    setReplyDraft("");
+  }
+
+  async function handleAcceptToOnProcess(inquiry: Inquiry, note?: string) {
+    setPendingId(inquiry.id);
+    setFeedback(null);
+    try {
+      const next = await acceptInquiry(inquiry.id, {
+        note: note?.trim() ? note.trim() : undefined,
+        verifyPayment: true,
+      });
+      const updated = next.find((entry) => entry.id === inquiry.id) ?? inquiry;
+      const outcome = await sendStatusEmail(updated, "ON_PROCESS", "park");
+      setFeedback(emailFeedback("ON_PROCESS", inquiry.email, outcome));
+      if (inspectId === inquiry.id) {
+        setNoteDraft(updated.adminNote ?? "");
+        setNoteDirty(false);
+      }
+    } catch {
+      setFeedback({
+        tone: "warn",
+        text: `Could not accept ${inquiry.reference}. Try again.`,
+      });
+    } finally {
+      setPendingId(null);
+    }
+  }
+
+  async function changeStatus(
+    inquiry: Inquiry,
+    status: InquiryStatus,
+    note?: string,
+  ) {
+    if (inquiry.status === status && !note) return;
 
     setPendingId(inquiry.id);
     setFeedback(null);
     try {
-      const next = await setInquiryStatus(inquiry.id, status);
+      const next = await setInquiryStatus(inquiry.id, status, {
+        actor: "park",
+        ...(note !== undefined ? { note } : {}),
+      });
       const updated = next.find((entry) => entry.id === inquiry.id) ?? inquiry;
 
-      // Accepting, declining or cancelling has an email half. The status is
-      // already saved, so a failed send is reported but never rolled back.
-      if (status === "CONFIRMED" || status === "DECLINED" || status === "CANCELLED") {
+      if (
+        status === "ON_PROCESS" ||
+        status === "CONFIRMED" ||
+        status === "COMPLETED" ||
+        status === "DECLINED" ||
+        status === "CANCELLED"
+      ) {
         const outcome = await sendStatusEmail(updated, status, "park");
         setFeedback(emailFeedback(status, inquiry.email, outcome));
       } else {
@@ -168,6 +281,10 @@ export default function AdminInquiriesPage() {
           tone: "ok",
           text: `${inquiry.reference} is now ${INQUIRY_STATUS_META[status].label.toLowerCase()}.`,
         });
+      }
+      if (inspectId === inquiry.id) {
+        setNoteDraft(updated.adminNote ?? "");
+        setNoteDirty(false);
       }
     } catch {
       setFeedback({
@@ -179,39 +296,188 @@ export default function AdminInquiriesPage() {
     }
   }
 
+  async function handlePaymentUpdate(
+    inquiry: Inquiry,
+    paymentStatus: PaymentStatus,
+  ) {
+    setPendingId(inquiry.id);
+    setFeedback(null);
+    try {
+      await updateInquiryPaymentStatus(inquiry.id, paymentStatus);
+      setFeedback({
+        tone: "ok",
+        text: `Updated payment status for ${inquiry.reference} to ${PAYMENT_STATUS_META[paymentStatus].label}.`,
+      });
+    } catch {
+      setFeedback({
+        tone: "warn",
+        text: `Could not update payment status for ${inquiry.reference}.`,
+      });
+    } finally {
+      setPendingId(null);
+    }
+  }
+
+  async function handleSaveNote(inquiry: Inquiry) {
+    setPendingId(inquiry.id);
+    setFeedback(null);
+    try {
+      await updateInquiryAdminNote(inquiry.id, noteDraft);
+      setNoteDirty(false);
+      setFeedback({
+        tone: "ok",
+        text: `Saved park update note on ${inquiry.reference}. Visible to the visitor in My Account.`,
+      });
+    } catch {
+      setFeedback({
+        tone: "warn",
+        text: `Could not save note for ${inquiry.reference}.`,
+      });
+    } finally {
+      setPendingId(null);
+    }
+  }
+
+  async function handleSendReply(inquiry: Inquiry) {
+    setReplyPending(true);
+    setFeedback(null);
+    try {
+      await addInquiryMessage(
+        inquiry.id,
+        "park",
+        currentUser?.fullName ? `${currentUser.fullName} (Park Desk)` : "Park Ranger Desk",
+        replyDraft,
+      );
+      setReplyDraft("");
+      setFeedback({
+        tone: "ok",
+        text: `Reply sent to ${inquiry.fullName} on ${inquiry.reference}.`,
+      });
+    } catch (error) {
+      setFeedback({
+        tone: "warn",
+        text:
+          error instanceof InquiryError
+            ? error.message
+            : `Could not send reply on ${inquiry.reference}.`,
+      });
+    } finally {
+      setReplyPending(false);
+    }
+  }
+
   const stats = useMemo(() => {
     const counts = Object.fromEntries(
       INQUIRY_STATUS_ORDER.map((status) => [status, 0]),
     ) as Record<InquiryStatus, number>;
 
-    for (const inquiry of inquiries) counts[inquiry.status] += 1;
+    let verifiedDeposits = 0;
+    let pendingDeposits = 0;
+    let pendingReviewCount = 0;
+
+    for (const inquiry of inquiries) {
+      counts[inquiry.status] += 1;
+      const amt = inquiry.firstPaymentAmount ?? 0;
+      if (inquiry.paymentStatus === "VERIFIED") {
+        verifiedDeposits += amt;
+      } else if (inquiry.paymentStatus === "PENDING_VERIFICATION") {
+        pendingDeposits += amt;
+        pendingReviewCount += 1;
+      }
+    }
 
     return {
       counts,
       total: inquiries.length,
       guests: inquiries.reduce((sum, inquiry) => sum + inquiry.partySize, 0),
-      confirmedGuests: inquiries
-        .filter((inquiry) => inquiry.status === "CONFIRMED")
-        .reduce((sum, inquiry) => sum + inquiry.partySize, 0),
+      verifiedDeposits,
+      pendingDeposits,
+      pendingReviewCount,
     };
   }, [inquiries]);
 
   const byPackage = useMemo(() => {
-    const groups = new Map<string, { title: string; count: number; guests: number }>();
+    const groups = new Map<
+      string,
+      { title: string; count: number; guests: number; deposits: number }
+    >();
 
     for (const inquiry of inquiries) {
       const entry = groups.get(inquiry.tourSlug) ?? {
         title: inquiry.tourTitle,
         count: 0,
         guests: 0,
+        deposits: 0,
       };
       entry.count += 1;
       entry.guests += inquiry.partySize;
+      if (inquiry.paymentStatus === "VERIFIED") {
+        entry.deposits += inquiry.firstPaymentAmount ?? 0;
+      }
       groups.set(inquiry.tourSlug, entry);
     }
 
     return [...groups.values()].sort((a, b) => b.count - a.count);
   }, [inquiries]);
+
+  const visible = useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    return inquiries.filter((item) => {
+      const matchesStatus =
+        statusFilter === "ALL" || item.status === statusFilter;
+      const pStatus = item.paymentStatus ?? "UNPAID";
+      const matchesPayment =
+        paymentFilter === "ALL" || pStatus === paymentFilter;
+      const matchesQuery =
+        !needle ||
+        item.reference.toLowerCase().includes(needle) ||
+        item.fullName.toLowerCase().includes(needle) ||
+        item.email.toLowerCase().includes(needle) ||
+        item.tourTitle.toLowerCase().includes(needle) ||
+        (item.paymentReference ?? "").toLowerCase().includes(needle);
+      return matchesStatus && matchesPayment && matchesQuery;
+    });
+  }, [inquiries, statusFilter, paymentFilter, query]);
+
+  function handleExportCsv() {
+    downloadCsv(
+      `naujan-bookings-${new Date().toISOString().slice(0, 10)}.csv`,
+      [
+        "Reference",
+        "Booking Status",
+        "Payment Status",
+        "Package",
+        "Preferred Date",
+        "Guests",
+        "Lead Visitor",
+        "Email",
+        "Phone",
+        "Total PHP",
+        "First Payment PHP",
+        "Balance Due PHP",
+        "Payment Channel",
+        "Payment Ref",
+        "Submitted At",
+      ],
+      visible.map((item) => [
+        item.reference,
+        INQUIRY_STATUS_META[item.status].label,
+        PAYMENT_STATUS_META[item.paymentStatus ?? "UNPAID"].label,
+        item.tourTitle,
+        item.preferredDate,
+        item.partySize,
+        item.fullName,
+        item.email,
+        item.phone,
+        item.totalAmount ?? 0,
+        item.firstPaymentAmount ?? 0,
+        item.balanceAmount ?? 0,
+        item.paymentMethod ? PAYMENT_METHOD_META[item.paymentMethod].label : "",
+        item.paymentReference ?? "",
+        item.createdAt,
+      ]),
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -265,7 +531,7 @@ export default function AdminInquiriesPage() {
             <button
               type="button"
               onClick={() => markInquiriesSeen()}
-              className="inline-flex items-center gap-1.5 rounded-full bg-alert-500 px-3.5 py-2 text-[11.5px] font-semibold text-white transition-colors hover:bg-alert-600 focus-visible:ring-2 focus-visible:ring-alert-600/40 focus-visible:ring-offset-2 focus-visible:ring-offset-alert-50 focus-visible:outline-none"
+              className="inline-flex items-center gap-1.5 rounded-full bg-alert-500 px-3.5 py-2 text-[11.5px] font-semibold text-white transition-colors hover:bg-alert-600"
             >
               <Check className="size-3.5" strokeWidth={2.6} aria-hidden="true" />
               Mark all as seen
@@ -284,9 +550,9 @@ export default function AdminInquiriesPage() {
           }`}
         >
           {feedback.tone === "ok" ? (
-            <Check className="mt-0.5 size-4 shrink-0" strokeWidth={2.4} aria-hidden="true" />
+            <Check className="mt-0.5 size-4 shrink-0" strokeWidth={2.4} />
           ) : (
-            <AlertCircle className="mt-0.5 size-4 shrink-0" strokeWidth={2} aria-hidden="true" />
+            <AlertCircle className="mt-0.5 size-4 shrink-0" strokeWidth={2} />
           )}
           {feedback.text}
         </p>
@@ -294,7 +560,7 @@ export default function AdminInquiriesPage() {
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
         <StatCard
-          label="All inquiries"
+          label="All bookings"
           value={stats.total}
           hint={`${stats.guests} guests requested in total`}
           tone="ink"
@@ -302,40 +568,44 @@ export default function AdminInquiriesPage() {
         <StatCard
           label="Pending"
           value={stats.counts.PENDING}
-          hint="Waiting on the park office"
+          hint="Waiting to be accepted"
           tone="reed"
+        />
+        <StatCard
+          label="On Process"
+          value={stats.counts.ON_PROCESS}
+          hint="Accepted · preparing boat & guide"
+          tone="lake"
         />
         <StatCard
           label="Confirmed"
           value={stats.counts.CONFIRMED}
-          hint={`${stats.confirmedGuests} guests booked`}
+          hint={`${stats.counts.COMPLETED} completed trips`}
           tone="moss"
         />
         <StatCard
-          label="Declined"
-          value={stats.counts.DECLINED}
-          hint="Could not be accommodated"
-          tone="alert"
-        />
-        <StatCard
-          label="Cancelled"
-          value={stats.counts.CANCELLED}
-          hint="Withdrawn by visitors"
-          tone="ink"
+          label="Verified deposits"
+          value={peso.format(stats.verifiedDeposits)}
+          hint={
+            stats.pendingReviewCount > 0
+              ? `${peso.format(stats.pendingDeposits)} awaiting review (${stats.pendingReviewCount})`
+              : "All submitted first payments reviewed"
+          }
+          tone="moss"
         />
       </div>
 
       <div className="grid gap-4 lg:grid-cols-12">
         <section className="rounded-2xl bg-white p-5 ring-1 ring-ink/8 lg:col-span-5">
           <h2 className="font-display text-[19px] leading-tight text-ink">
-            Inquiries by status
+            Bookings by status
           </h2>
           <p className="mt-0.5 text-[12.5px] text-ink-soft/65">
-            Share of the {stats.total} request{stats.total === 1 ? "" : "s"} on
+            Share of the {stats.total} booking{stats.total === 1 ? "" : "s"} on
             file
           </p>
 
-          <ul className="mt-5 space-y-4">
+          <ul className="mt-5 space-y-3.5">
             {INQUIRY_STATUS_ORDER.map((status) => {
               const count = stats.counts[status];
               const percent = stats.total
@@ -353,7 +623,7 @@ export default function AdminInquiriesPage() {
                     </p>
                   </div>
                   <div
-                    className="mt-2 h-1.5 overflow-hidden rounded-full bg-sand-200"
+                    className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-sand-200"
                     role="presentation"
                   >
                     <div
@@ -370,10 +640,10 @@ export default function AdminInquiriesPage() {
         <section className="overflow-hidden rounded-2xl bg-white ring-1 ring-ink/8 lg:col-span-7">
           <div className="border-b border-ink/8 px-5 py-4">
             <h2 className="font-display text-[19px] leading-tight text-ink">
-              Demand by package
+              Demand &amp; verified deposits by package
             </h2>
             <p className="mt-0.5 text-[12.5px] text-ink-soft/65">
-              Which tours visitors ask for most
+              Which tours visitors book most and deposits verified
             </p>
           </div>
 
@@ -384,10 +654,13 @@ export default function AdminInquiriesPage() {
                   Package
                 </th>
                 <th scope="col" className="px-5 py-2.5 text-right font-semibold">
-                  Inquiries
+                  Bookings
                 </th>
                 <th scope="col" className="px-5 py-2.5 text-right font-semibold">
                   Guests
+                </th>
+                <th scope="col" className="px-5 py-2.5 text-right font-semibold">
+                  Verified Deposits
                 </th>
               </tr>
             </thead>
@@ -401,13 +674,19 @@ export default function AdminInquiriesPage() {
                   <td className="px-5 py-3 text-right font-mono text-[12.5px] text-ink-soft/75">
                     {row.guests}
                   </td>
+                  <td className="px-5 py-3 text-right font-mono text-[12.5px] font-medium text-moss-700">
+                    {peso.format(row.deposits)}
+                  </td>
                 </tr>
               ))}
 
               {byPackage.length === 0 && (
                 <tr>
-                  <td colSpan={3} className="px-5 py-10 text-center text-[13px] text-ink-soft/65">
-                    No inquiries yet.
+                  <td
+                    colSpan={4}
+                    className="px-5 py-10 text-center text-[13px] text-ink-soft/65"
+                  >
+                    No bookings yet.
                   </td>
                 </tr>
               )}
@@ -416,25 +695,107 @@ export default function AdminInquiriesPage() {
         </section>
       </div>
 
+      {/* Bookings Management Queue */}
       <section className="overflow-hidden rounded-2xl bg-white ring-1 ring-ink/8">
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-ink/8 px-5 py-4">
-          <div>
-            <h2 className="flex items-center gap-2 font-display text-[19px] leading-tight text-ink">
-              Recent inquiries
-              {unread > 0 && (
-                <span className="rounded-full bg-alert-500 px-2 py-0.5 text-[9.5px] font-bold tracking-[0.1em] text-white uppercase">
-                  {unread} new
-                </span>
-              )}
-            </h2>
-            <p className="mt-0.5 text-[12.5px] text-ink-soft/65">
-              Newest first · accepting or declining emails the guest
-            </p>
+        <div className="space-y-4 border-b border-ink/8 px-5 py-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="flex items-center gap-2 font-display text-[19px] leading-tight text-ink">
+                Booking &amp; payment queue
+                {unread > 0 && (
+                  <span className="rounded-full bg-alert-500 px-2 py-0.5 text-[9.5px] font-bold tracking-[0.1em] text-white uppercase">
+                    {unread} new
+                  </span>
+                )}
+              </h2>
+              <p className="mt-0.5 text-[12.5px] text-ink-soft/65">
+                {visible.length} of {stats.total} shown · Accepting moves a
+                Pending booking to On Process and verifies its first payment
+              </p>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="relative">
+                <Search
+                  className="pointer-events-none absolute top-1/2 left-3 size-3.5 -translate-y-1/2 text-sand-500"
+                  strokeWidth={2}
+                />
+                <input
+                  type="search"
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder="Search ref, guest, payment ref"
+                  aria-label="Search bookings"
+                  className="w-56 rounded-full border border-ink/12 bg-white py-2 pr-3 pl-9 text-[12.5px] text-ink outline-none placeholder:text-sand-400 focus:border-lake-600 focus:ring-3 focus:ring-lake-600/15"
+                />
+              </div>
+
+              <div className="flex items-center gap-1.5 rounded-full border border-ink/12 bg-sand-50 px-3 py-1.5">
+                <SlidersHorizontal className="size-3.5 text-sand-600" />
+                <select
+                  value={paymentFilter}
+                  onChange={(e) =>
+                    setPaymentFilter(e.target.value as PaymentFilter)
+                  }
+                  aria-label="Filter by payment status"
+                  className="bg-transparent text-[12px] font-medium text-ink outline-none"
+                >
+                  <option value="ALL">All payments</option>
+                  <option value="PENDING_VERIFICATION">For verification</option>
+                  <option value="VERIFIED">Verified</option>
+                  <option value="UNPAID">Unpaid</option>
+                </select>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleExportCsv}
+                disabled={visible.length === 0}
+                className="inline-flex items-center gap-1.5 rounded-full border border-ink/12 bg-white px-3.5 py-2 text-[12px] font-semibold text-ink transition-colors hover:bg-sand-50 disabled:opacity-45"
+              >
+                <Download className="size-3.5 text-sand-600" />
+                Export CSV
+              </button>
+            </div>
+          </div>
+
+          <div
+            role="group"
+            aria-label="Filter by booking status"
+            className="flex flex-wrap gap-1.5"
+          >
+            <button
+              type="button"
+              onClick={() => setStatusFilter("ALL")}
+              aria-pressed={statusFilter === "ALL"}
+              className={`rounded-full px-3 py-1.5 text-[11.5px] font-medium transition-colors ${
+                statusFilter === "ALL"
+                  ? "bg-lake-900 text-sand-50"
+                  : "bg-sand-100 text-ink-soft hover:bg-sand-200"
+              }`}
+            >
+              All ({stats.total})
+            </button>
+            {INQUIRY_STATUS_ORDER.map((status) => (
+              <button
+                key={status}
+                type="button"
+                onClick={() => setStatusFilter(status)}
+                aria-pressed={statusFilter === status}
+                className={`rounded-full px-3 py-1.5 text-[11.5px] font-medium transition-colors ${
+                  statusFilter === status
+                    ? "bg-lake-900 text-sand-50"
+                    : "bg-sand-100 text-ink-soft hover:bg-sand-200"
+                }`}
+              >
+                {INQUIRY_STATUS_META[status].label} ({stats.counts[status]})
+              </button>
+            ))}
           </div>
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[760px] text-left">
+          <table className="w-full min-w-[960px] text-left">
             <thead>
               <tr className="border-b border-ink/8 text-[10px] font-semibold tracking-[0.14em] text-sand-600 uppercase">
                 <th scope="col" className="px-5 py-3 font-semibold">
@@ -444,103 +805,183 @@ export default function AdminInquiriesPage() {
                   Guest
                 </th>
                 <th scope="col" className="px-5 py-3 font-semibold">
-                  Package
+                  Package &amp; Date
                 </th>
                 <th scope="col" className="px-5 py-3 font-semibold">
-                  Preferred date
-                </th>
-                <th scope="col" className="px-5 py-3 text-right font-semibold">
-                  Guests
+                  First Payment
                 </th>
                 <th scope="col" className="px-5 py-3 font-semibold">
                   Status
                 </th>
+                <th scope="col" className="px-5 py-3 text-right font-semibold">
+                  Actions
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-ink/6">
-              {inquiries.map((inquiry) => {
+              {visible.map((inquiry) => {
                 const isNew = unreadIds.has(inquiry.id);
+                const pStatus = inquiry.paymentStatus ?? "UNPAID";
+                const pMeta = PAYMENT_STATUS_META[pStatus];
+                const busy = pendingId === inquiry.id;
 
                 return (
-                <tr
-                  key={inquiry.id}
-                  className={
-                    isNew
-                      ? "bg-alert-50/70 transition-colors hover:bg-alert-50"
-                      : "transition-colors hover:bg-sand-50/70"
-                  }
-                >
-                  <td className="px-5 py-3.5 font-mono text-[12px] text-ink-soft/80">
-                    <span
-                      className={
-                        isNew
-                          ? "border-l-2 border-alert-500 pl-2.5"
-                          : undefined
-                      }
-                    >
-                      {inquiry.reference}
-                    </span>
-                    {isNew && (
-                      <span className="ml-2 inline-flex items-center rounded-full bg-alert-500 px-1.5 py-0.5 align-middle text-[8.5px] font-bold tracking-[0.1em] text-white uppercase">
-                        New
+                  <tr
+                    key={inquiry.id}
+                    className={
+                      isNew
+                        ? "bg-alert-50/70 transition-colors hover:bg-alert-50"
+                        : "transition-colors hover:bg-sand-50/70"
+                    }
+                  >
+                    <td className="px-5 py-3.5 font-mono text-[12px] text-ink-soft/80">
+                      <span
+                        className={
+                          isNew
+                            ? "border-l-2 border-alert-500 pl-2.5"
+                            : undefined
+                        }
+                      >
+                        {inquiry.reference}
                       </span>
-                    )}
-                  </td>
-                  <td className="px-5 py-3.5">
-                    <p className="text-[13px] font-medium text-ink">
-                      {inquiry.fullName}
-                    </p>
-                    <p className="text-[11.5px] text-ink-soft/60">{inquiry.email}</p>
-                  </td>
-                  <td className="px-5 py-3.5 text-[12.5px] text-ink-soft/85">
-                    {inquiry.tourTitle}
-                  </td>
-                  <td className="px-5 py-3.5 text-[12.5px] text-ink-soft/75">
-                    {formatDay(inquiry.preferredDate)}
-                  </td>
-                  <td className="px-5 py-3.5 text-right font-mono text-[12.5px] text-ink">
-                    {inquiry.partySize}
-                  </td>
-                  <td className="px-5 py-3.5">
-                    <select
-                      value={inquiry.status}
-                      onChange={(event) => {
-                        void changeStatus(
-                          inquiry,
-                          event.target.value as InquiryStatus,
-                        );
-                      }}
-                      disabled={pendingId === inquiry.id}
-                      aria-label={`Status for ${inquiry.reference}`}
-                      className={`cursor-pointer rounded-full border-0 px-2.5 py-1 text-[10.5px] font-semibold tracking-[0.1em] uppercase ring-1 ring-inset outline-none disabled:cursor-wait disabled:opacity-60 ${INQUIRY_STATUS_META[inquiry.status].chip}`}
-                    >
-                      {INQUIRY_STATUS_ORDER.map((status) => (
-                        <option key={status} value={status}>
-                          {INQUIRY_STATUS_META[status].label}
-                        </option>
-                      ))}
-                    </select>
-                    <p className="mt-1.5 text-[10.5px] text-ink-soft/55">
-                      {statusDetail(inquiry)}
-                    </p>
-                  </td>
-                </tr>
+                      {isNew && (
+                        <span className="ml-2 inline-flex items-center rounded-full bg-alert-500 px-1.5 py-0.5 align-middle text-[8.5px] font-bold tracking-[0.1em] text-white uppercase">
+                          New
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-5 py-3.5">
+                      <p className="text-[13px] font-medium text-ink">
+                        {inquiry.fullName}
+                      </p>
+                      <p className="text-[11.5px] text-ink-soft/60">
+                        {inquiry.email}
+                      </p>
+                    </td>
+                    <td className="px-5 py-3.5">
+                      <p className="text-[12.5px] font-medium text-ink">
+                        {inquiry.tourTitle}
+                      </p>
+                      <p className="text-[11.5px] text-ink-soft/65">
+                        {formatDay(inquiry.preferredDate)} · {inquiry.partySize}{" "}
+                        {inquiry.partySize === 1 ? "guest" : "guests"}
+                      </p>
+                    </td>
+                    <td className="px-5 py-3.5">
+                      <p className="font-mono text-[12.5px] font-semibold text-ink">
+                        {peso.format(inquiry.firstPaymentAmount ?? 0)}
+                        <span className="ml-1.5 font-sans text-[11px] font-normal text-sand-600">
+                          / {peso.format(inquiry.totalAmount ?? 0)}
+                        </span>
+                      </p>
+                      <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                        <span
+                          className={`inline-flex rounded-full px-2 py-0.5 text-[9.5px] font-semibold uppercase ring-1 ring-inset ${pMeta.chip}`}
+                        >
+                          {pStatus === "VERIFIED"
+                            ? "Verified"
+                            : pStatus === "PENDING_VERIFICATION"
+                              ? "For review"
+                              : pStatus === "REFUNDED"
+                                ? "Refunded"
+                                : "Unpaid"}
+                        </span>
+                        {inquiry.paymentReference && (
+                          <span className="font-mono text-[10.5px] text-sand-600">
+                            {inquiry.paymentMethod
+                              ? `${PAYMENT_METHOD_META[inquiry.paymentMethod].label} · `
+                              : ""}
+                            {inquiry.paymentReference}
+                          </span>
+                        )}
+                      </div>
+                    </td>
+                    <td className="px-5 py-3.5">
+                      <select
+                        value={inquiry.status}
+                        onChange={(event) => {
+                          void changeStatus(
+                            inquiry,
+                            event.target.value as InquiryStatus,
+                          );
+                        }}
+                        disabled={busy}
+                        aria-label={`Status for ${inquiry.reference}`}
+                        className={`cursor-pointer rounded-full border-0 px-2.5 py-1 text-[10.5px] font-semibold tracking-[0.1em] uppercase ring-1 ring-inset outline-none disabled:cursor-wait disabled:opacity-60 ${INQUIRY_STATUS_META[inquiry.status].chip}`}
+                      >
+                        {INQUIRY_STATUS_ORDER.map((status) => (
+                          <option key={status} value={status}>
+                            {INQUIRY_STATUS_META[status].label}
+                          </option>
+                        ))}
+                      </select>
+                      <p className="mt-1.5 text-[10.5px] text-ink-soft/60">
+                        {statusDetail(inquiry)}
+                      </p>
+                    </td>
+                    <td className="px-5 py-3.5 text-right">
+                      <div className="inline-flex items-center justify-end gap-1.5">
+                        {inquiry.status === "PENDING" && (
+                          <button
+                            type="button"
+                            disabled={busy}
+                            onClick={() => void handleAcceptToOnProcess(inquiry)}
+                            className="inline-flex items-center gap-1 rounded-full bg-lake-800 px-3 py-1.5 text-[11px] font-semibold text-sand-50 transition-colors hover:bg-lake-700 disabled:opacity-60"
+                          >
+                            {busy ? (
+                              <Loader2 className="size-3 animate-spin" />
+                            ) : (
+                              <CheckCircle2 className="size-3" />
+                            )}
+                            Accept → On Process
+                          </button>
+                        )}
+                        {inquiry.status === "ON_PROCESS" && (
+                          <button
+                            type="button"
+                            disabled={busy}
+                            onClick={() => void changeStatus(inquiry, "CONFIRMED")}
+                            className="inline-flex items-center gap-1 rounded-full bg-moss-700 px-3 py-1.5 text-[11px] font-semibold text-white transition-colors hover:bg-moss-800 disabled:opacity-60"
+                          >
+                            Confirm ready
+                          </button>
+                        )}
+                        {inquiry.status === "CONFIRMED" && (
+                          <button
+                            type="button"
+                            disabled={busy}
+                            onClick={() => void changeStatus(inquiry, "COMPLETED")}
+                            className="inline-flex items-center gap-1 rounded-full border border-moss-600/30 bg-moss-50 px-3 py-1.5 text-[11px] font-semibold text-moss-800 transition-colors hover:bg-moss-100 disabled:opacity-60"
+                          >
+                            Mark completed
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => openInspector(inquiry)}
+                          className="inline-flex items-center gap-1 rounded-full border border-ink/15 bg-white px-3 py-1.5 text-[11px] font-semibold text-ink transition-colors hover:bg-sand-100"
+                        >
+                          <Eye className="size-3" />
+                          Manage
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
                 );
               })}
 
-              {inquiries.length === 0 && (
+              {visible.length === 0 && (
                 <tr>
                   <td colSpan={6} className="px-5 py-14 text-center">
                     <Inbox
                       className="mx-auto size-6 text-sand-400"
                       strokeWidth={1.6}
-                      aria-hidden="true"
                     />
                     <p className="mt-3 text-[13.5px] font-medium text-ink">
-                      No inquiries yet
+                      No matching bookings
                     </p>
                     <p className="mt-1 text-[12.5px] text-ink-soft/65">
-                      Requests sent from the public inquiry form appear here.
+                      Adjust your search or status filter.
                     </p>
                   </td>
                 </tr>
@@ -549,6 +990,379 @@ export default function AdminInquiriesPage() {
           </table>
         </div>
       </section>
+
+      {/* Booking & Payment Inspector Modal */}
+      {inspected && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label={`Manage booking ${inspected.reference}`}
+          className="fixed inset-0 z-50 flex justify-end bg-ink/50 backdrop-blur-sm"
+        >
+          <div className="flex h-full w-full max-w-xl flex-col overflow-y-auto bg-sand-50 shadow-2xl">
+            <div className="sticky top-0 z-10 flex items-center justify-between border-b border-ink/10 bg-white px-6 py-4">
+              <div>
+                <p className="font-mono text-[11.5px] text-lake-700">
+                  {inspected.reference}
+                </p>
+                <h2 className="mt-0.5 font-display text-[20px] text-ink">
+                  {inspected.tourTitle}
+                </h2>
+              </div>
+              <button
+                type="button"
+                onClick={() => setInspectId(null)}
+                aria-label="Close booking inspector"
+                className="grid size-9 place-items-center rounded-full border border-ink/12 hover:bg-sand-100"
+              >
+                <X className="size-4" />
+              </button>
+            </div>
+
+            <div className="space-y-5 p-6">
+              {/* Guest details */}
+              <div className="rounded-2xl bg-white p-5 ring-1 ring-ink/8">
+                <p className="text-[10px] font-semibold tracking-[0.16em] text-sand-600 uppercase">
+                  Guest &amp; trip details
+                </p>
+                <dl className="mt-3 grid gap-3 text-[13px] sm:grid-cols-2">
+                  <div>
+                    <dt className="text-sand-600">Visitor</dt>
+                    <dd className="font-medium text-ink">{inspected.fullName}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-sand-600">Email &amp; phone</dt>
+                    <dd className="text-ink">{inspected.email}</dd>
+                    {inspected.phone && (
+                      <dd className="font-mono text-[12px] text-ink-soft">
+                        {inspected.phone}
+                      </dd>
+                    )}
+                  </div>
+                  <div>
+                    <dt className="text-sand-600">Preferred departure</dt>
+                    <dd className="font-medium text-ink">
+                      {formatDay(inspected.preferredDate)}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-sand-600">Party size</dt>
+                    <dd className="font-medium text-ink">
+                      {inspected.partySize}{" "}
+                      {inspected.partySize === 1 ? "guest" : "guests"}
+                    </dd>
+                    <dd className="mt-0.5 text-[11.5px] text-lake-800">
+                      {getReservedSeatsForDate(
+                        inquiries,
+                        inspected.tourSlug,
+                        inspected.preferredDate,
+                      )}{" "}
+                      total seats held on this date
+                    </dd>
+                  </div>
+                </dl>
+                {inspected.message && (
+                  <div className="mt-3 rounded-xl bg-sand-50 p-3 text-[12.5px] text-ink-soft">
+                    <span className="font-semibold text-ink">Guest note: </span>
+                    {inspected.message}
+                  </div>
+                )}
+              </div>
+
+              {/* First Payment verification */}
+              <div className="rounded-2xl bg-white p-5 ring-1 ring-ink/8">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="flex items-center gap-1.5 text-[10px] font-semibold tracking-[0.16em] text-sand-600 uppercase">
+                    <CreditCard className="size-3.5 text-lake-700" />
+                    First payment details
+                  </p>
+                  <span
+                    className={`rounded-full px-2.5 py-0.5 text-[10px] font-semibold uppercase ring-1 ring-inset ${
+                      PAYMENT_STATUS_META[inspected.paymentStatus ?? "UNPAID"]
+                        .chip
+                    }`}
+                  >
+                    {
+                      PAYMENT_STATUS_META[inspected.paymentStatus ?? "UNPAID"]
+                        .label
+                    }
+                  </span>
+                </div>
+
+                <dl className="mt-3 grid gap-3 text-[13px] sm:grid-cols-3">
+                  <div>
+                    <dt className="text-sand-600">Total tariff</dt>
+                    <dd className="font-mono font-medium text-ink">
+                      {peso.format(inspected.totalAmount ?? 0)}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-sand-600">First payment</dt>
+                    <dd className="font-mono font-semibold text-moss-700">
+                      {peso.format(inspected.firstPaymentAmount ?? 0)}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-sand-600">Jetty balance</dt>
+                    <dd className="font-mono text-ink">
+                      {peso.format(inspected.balanceAmount ?? 0)}
+                    </dd>
+                  </div>
+                </dl>
+
+                {inspected.paymentReference && (
+                  <div className="mt-3 rounded-xl bg-sand-50 p-3 text-[12.5px]">
+                    <p className="text-ink">
+                      <span className="font-semibold">
+                        {inspected.paymentMethod
+                          ? PAYMENT_METHOD_META[inspected.paymentMethod].label
+                          : "Payment"}
+                        :
+                      </span>{" "}
+                      <span className="font-mono">
+                        {inspected.paymentReference}
+                      </span>
+                    </p>
+                    {inspected.paymentAccountName && (
+                      <p className="mt-0.5 text-ink-soft/75">
+                        Sender: {inspected.paymentAccountName}
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                {inspected.paymentProofUrl && (
+                  <div className="mt-3">
+                    <p className="mb-1.5 text-[11px] font-semibold text-sand-600 uppercase">
+                      Uploaded receipt
+                    </p>
+                    <Image
+                      src={inspected.paymentProofUrl}
+                      alt={`Payment receipt for ${inspected.reference}`}
+                      width={420}
+                      height={300}
+                      unoptimized
+                      className="max-h-56 w-full rounded-xl bg-sand-100 object-contain ring-1 ring-ink/10"
+                    />
+                  </div>
+                )}
+
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    disabled={
+                      pendingId === inspected.id ||
+                      inspected.paymentStatus === "VERIFIED"
+                    }
+                    onClick={() =>
+                      void handlePaymentUpdate(inspected, "VERIFIED")
+                    }
+                    className="rounded-full bg-moss-700 px-3.5 py-1.5 text-[11.5px] font-semibold text-white hover:bg-moss-800 disabled:opacity-50"
+                  >
+                    Verify payment
+                  </button>
+                  <button
+                    type="button"
+                    disabled={
+                      pendingId === inspected.id ||
+                      inspected.paymentStatus === "PENDING_VERIFICATION"
+                    }
+                    onClick={() =>
+                      void handlePaymentUpdate(
+                        inspected,
+                        "PENDING_VERIFICATION",
+                      )
+                    }
+                    className="rounded-full border border-ink/15 bg-white px-3.5 py-1.5 text-[11.5px] font-semibold text-ink hover:bg-sand-100 disabled:opacity-50"
+                  >
+                    Mark for review
+                  </button>
+                  <button
+                    type="button"
+                    disabled={
+                      pendingId === inspected.id ||
+                      inspected.paymentStatus === "REFUNDED"
+                    }
+                    onClick={() =>
+                      void handlePaymentUpdate(inspected, "REFUNDED")
+                    }
+                    className="rounded-full border border-ink/15 bg-white px-3.5 py-1.5 text-[11.5px] font-semibold text-alert-700 hover:bg-alert-50 disabled:opacity-50"
+                  >
+                    Mark refunded
+                  </button>
+                </div>
+              </div>
+
+              {/* Staff update note & Status transition */}
+              <div className="rounded-2xl bg-white p-5 ring-1 ring-ink/8">
+                <label
+                  htmlFor="adminNote"
+                  className="block text-[10px] font-semibold tracking-[0.16em] text-sand-600 uppercase"
+                >
+                  Staff update note (visible in user&apos;s My Account)
+                </label>
+                <textarea
+                  id="adminNote"
+                  rows={3}
+                  value={noteDraft}
+                  onChange={(e) => {
+                    setNoteDraft(e.target.value);
+                    setNoteDirty(true);
+                  }}
+                  placeholder="e.g. Boat #2 & Guide Marco assigned. Preparing permit..."
+                  className="mt-2 w-full rounded-xl border border-ink/12 bg-white px-3.5 py-2.5 text-[13px] text-ink outline-none focus:border-lake-600 focus:ring-3 focus:ring-lake-600/15"
+                />
+                <div className="mt-2.5 flex flex-wrap items-center justify-between gap-2">
+                  <button
+                    type="button"
+                    disabled={!noteDirty || pendingId === inspected.id}
+                    onClick={() => void handleSaveNote(inspected)}
+                    className="rounded-full border border-ink/15 px-3.5 py-1.5 text-[11.5px] font-semibold text-ink hover:bg-sand-100 disabled:opacity-45"
+                  >
+                    Save note only
+                  </button>
+
+                  <div className="flex flex-wrap gap-2">
+                    {inspected.status !== "ON_PROCESS" && (
+                      <button
+                        type="button"
+                        disabled={pendingId === inspected.id}
+                        onClick={() =>
+                          void handleAcceptToOnProcess(inspected, noteDraft)
+                        }
+                        className="rounded-full bg-lake-800 px-3.5 py-1.5 text-[11.5px] font-semibold text-sand-50 hover:bg-lake-700"
+                      >
+                        Accept → On Process
+                      </button>
+                    )}
+                    {inspected.status !== "CONFIRMED" && (
+                      <button
+                        type="button"
+                        disabled={pendingId === inspected.id}
+                        onClick={() =>
+                          void changeStatus(inspected, "CONFIRMED", noteDraft)
+                        }
+                        className="rounded-full bg-moss-700 px-3.5 py-1.5 text-[11.5px] font-semibold text-white hover:bg-moss-800"
+                      >
+                        Confirm ready
+                      </button>
+                    )}
+                    {inspected.status !== "DECLINED" && (
+                      <button
+                        type="button"
+                        disabled={pendingId === inspected.id}
+                        onClick={() =>
+                          void changeStatus(inspected, "DECLINED", noteDraft)
+                        }
+                        className="rounded-full bg-alert-50 px-3.5 py-1.5 text-[11.5px] font-semibold text-alert-700 ring-1 ring-alert-500/25 hover:bg-alert-100"
+                      >
+                        Decline
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Two-Way Visitor Correspondence */}
+              <div className="rounded-2xl bg-white p-5 ring-1 ring-ink/8 space-y-3">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="flex items-center gap-1.5 text-[10px] font-semibold tracking-[0.16em] text-sand-600 uppercase">
+                    <MessageSquareText className="size-3.5 text-lake-700" />
+                    Visitor messages ({inspected.messages?.length ?? 0})
+                  </p>
+                </div>
+
+                {inspected.messages && inspected.messages.length > 0 ? (
+                  <ul className="max-h-56 space-y-2 overflow-y-auto pr-1">
+                    {inspected.messages.map((msg) => {
+                      const isPark = msg.sender === "park";
+                      return (
+                        <li
+                          key={msg.id}
+                          className={`rounded-xl px-3.5 py-2.5 text-[12.5px] ${
+                            isPark
+                              ? "ml-6 bg-lake-50/80 text-ink ring-1 ring-lake-600/20"
+                              : "mr-6 bg-sand-50 text-ink ring-1 ring-ink/8"
+                          }`}
+                        >
+                          <div className="flex items-center justify-between gap-2 text-[10.5px]">
+                            <span className="font-semibold text-ink">
+                              {msg.senderName}
+                            </span>
+                            <span className="font-mono text-sand-600">
+                              {formatDateTime(msg.at)}
+                            </span>
+                          </div>
+                          <p className="mt-1 leading-relaxed text-ink-soft">
+                            {msg.body}
+                          </p>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                ) : (
+                  <p className="text-[12.5px] text-ink-soft/65">
+                    No messages yet on this booking. Send a note directly to the visitor below.
+                  </p>
+                )}
+
+                <div className="flex items-end gap-2 pt-1">
+                  <textarea
+                    rows={2}
+                    value={replyDraft}
+                    onChange={(e) => setReplyDraft(e.target.value)}
+                    placeholder="Reply to visitor (visible in their My Account)…"
+                    className="flex-1 resize-none rounded-xl border border-ink/12 bg-white px-3 py-2 text-[13px] text-ink outline-none focus:border-lake-600 focus:ring-2 focus:ring-lake-600/15"
+                  />
+                  <button
+                    type="button"
+                    disabled={replyPending || !replyDraft.trim()}
+                    onClick={() => void handleSendReply(inspected)}
+                    className="inline-flex h-10 items-center gap-1.5 rounded-xl bg-lake-800 px-3.5 text-[12px] font-semibold text-sand-50 hover:bg-lake-700 disabled:opacity-50"
+                  >
+                    {replyPending ? (
+                      <Loader2 className="size-3.5 animate-spin" />
+                    ) : (
+                      <Send className="size-3.5" />
+                    )}
+                    Send
+                  </button>
+                </div>
+              </div>
+
+              {/* Timeline */}
+              {inspected.timeline && inspected.timeline.length > 0 && (
+                <div className="rounded-2xl bg-white p-5 ring-1 ring-ink/8">
+                  <p className="text-[10px] font-semibold tracking-[0.16em] text-sand-600 uppercase">
+                    Tracking timeline
+                  </p>
+                  <ol className="mt-4 space-y-3 border-l-2 border-lake-200 pl-4">
+                    {inspected.timeline.map((event) => (
+                      <li key={event.id} className="relative text-[12px]">
+                        <span
+                          aria-hidden="true"
+                          className="absolute top-1.5 -left-[21px] size-2 rounded-full bg-lake-600 ring-4 ring-white"
+                        />
+                        <div className="flex flex-wrap justify-between gap-2">
+                          <span className="font-semibold text-ink">
+                            {event.label}
+                          </span>
+                          <span className="font-mono text-[11px] text-sand-600">
+                            {formatDateTime(event.at)}
+                          </span>
+                        </div>
+                        {event.note && (
+                          <p className="mt-0.5 text-ink-soft/80">{event.note}</p>
+                        )}
+                      </li>
+                    ))}
+                  </ol>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

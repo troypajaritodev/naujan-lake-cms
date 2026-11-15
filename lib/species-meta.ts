@@ -21,6 +21,19 @@ export type WildlifeGroup = {
   description: string;
 };
 
+/** A credited photograph attached to a species record (FR-1.2). */
+export type SpeciesPhoto = {
+  /** Local path under `/public`, so no remote-image allowlist is needed. */
+  src: string;
+  alt: string;
+  /** Short display name of the photographer. */
+  credit: string;
+  license: string;
+  licenseUrl: string;
+  /** Wikimedia Commons file page — the definitive attribution source. */
+  sourceUrl: string;
+};
+
 export type Species = {
   slug: string;
   /** Matches `WildlifeGroup.slug` — the `categories` foreign key. */
@@ -32,6 +45,8 @@ export type Species = {
   seasonality: Seasonality;
   habitat: string;
   description: string;
+  /** Optional so rows from an older schema still render without a picture. */
+  photo?: SpeciesPhoto;
 };
 
 export const conservationLabels: Record<ConservationStatus, string> = {

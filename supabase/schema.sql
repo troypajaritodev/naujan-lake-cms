@@ -26,9 +26,13 @@ do $$ begin create type public.user_role as enum ('admin', 'visitor'); exception
 do $$ begin create type public.conservation_status as enum ('CR', 'EN', 'VU', 'NT', 'LC', 'DD'); exception when duplicate_object then null; end $$;
 do $$ begin create type public.seasonality as enum ('RESIDENT', 'MIGRATORY', 'SEASONAL'); exception when duplicate_object then null; end $$;
 do $$ begin create type public.tour_difficulty as enum ('EASY', 'MODERATE', 'CHALLENGING'); exception when duplicate_object then null; end $$;
-do $$ begin create type public.inquiry_status as enum ('PENDING', 'CONTACTED', 'CONFIRMED', 'DECLINED', 'CANCELLED'); exception when duplicate_object then null; end $$;
--- Existing databases pick up the new terminal state without a rebuild.
-do $$ begin alter type public.inquiry_status add value 'CANCELLED'; exception when duplicate_object then null; end $$;
+do $$ begin create type public.inquiry_status as enum ('PENDING', 'ON_PROCESS', 'CONTACTED', 'CONFIRMED', 'COMPLETED', 'DECLINED', 'CANCELLED'); exception when duplicate_object then null; end $$;
+-- Existing databases pick up the new workflow states without a rebuild.
+do $$ begin alter type public.inquiry_status add value if not exists 'ON_PROCESS'; exception when duplicate_object then null; end $$;
+do $$ begin alter type public.inquiry_status add value if not exists 'COMPLETED'; exception when duplicate_object then null; end $$;
+do $$ begin alter type public.inquiry_status add value if not exists 'CANCELLED'; exception when duplicate_object then null; end $$;
+do $$ begin create type public.payment_method as enum ('GCASH', 'MAYA', 'BANK_TRANSFER'); exception when duplicate_object then null; end $$;
+do $$ begin create type public.payment_status as enum ('UNPAID', 'PENDING_VERIFICATION', 'VERIFIED', 'REFUNDED'); exception when duplicate_object then null; end $$;
 do $$ begin create type public.advisory_severity as enum ('CRITICAL', 'WARNING', 'INFO'); exception when duplicate_object then null; end $$;
 do $$ begin create type public.subscriber_status as enum ('ACTIVE', 'UNSUBSCRIBED'); exception when duplicate_object then null; end $$;
 
@@ -116,27 +120,59 @@ comment on column public.tours.species_slugs is 'FR-1.3: species slugs (public.s
 alter table public.tours
   add column if not exists species_slugs text[] not null default '{}';
 
--- 2.5 tour_inquiries — booking requests (FR-2.3)
+-- 2.5 tour_inquiries — booking requests & first payment tracking (FR-2.3)
 create table if not exists public.tour_inquiries (
-  id             uuid primary key default gen_random_uuid(),
-  reference_code text not null unique,
-  tour_id        uuid not null references public.tours (id) on delete restrict,
-  user_id        uuid references public.users (id) on delete set null,
-  full_name      text not null,
-  email          text not null,
-  phone          text,
-  target_date    date not null,
-  party_size     integer not null check (party_size between 1 and 60),
-  notes          text,
-  status         public.inquiry_status not null default 'PENDING',
-  confirmed_at   timestamptz,
-  cancelled_at   timestamptz,
-  decided_by     text check (decided_by in ('visitor', 'park')),
-  created_at     timestamptz not null default now(),
-  updated_at     timestamptz not null default now(),
+  id                   uuid primary key default gen_random_uuid(),
+  reference_code       text not null unique,
+  tour_id              uuid not null references public.tours (id) on delete restrict,
+  user_id              uuid references public.users (id) on delete set null,
+  full_name            text not null,
+  email                text not null,
+  phone                text,
+  target_date          date not null,
+  party_size           integer not null check (party_size between 1 and 60),
+  notes                text,
+  status               public.inquiry_status not null default 'PENDING',
+  on_process_at        timestamptz,
+  confirmed_at         timestamptz,
+  completed_at         timestamptz,
+  cancelled_at         timestamptz,
+  decided_by           text check (decided_by in ('visitor', 'park')),
+  rate_per_person      numeric(10, 2) not null default 0,
+  total_amount         numeric(10, 2) not null default 0,
+  first_payment_amount numeric(10, 2) not null default 0,
+  balance_amount       numeric(10, 2) not null default 0,
+  payment_method       public.payment_method,
+  payment_reference    text,
+  payment_account_name text,
+  payment_status       public.payment_status not null default 'UNPAID',
+  payment_submitted_at timestamptz,
+  payment_verified_at  timestamptz,
+  admin_note           text,
+  timeline             jsonb not null default '[]'::jsonb,
+  messages             jsonb not null default '[]'::jsonb,
+  created_at           timestamptz not null default now(),
+  updated_at           timestamptz not null default now(),
   constraint tour_inquiries_email_format
     check (email ~* '^[^@[:space:]]+@[^@[:space:]]+\.[^@[:space:]]{2,}$')
 );
+
+alter table public.tour_inquiries
+  add column if not exists on_process_at        timestamptz,
+  add column if not exists completed_at         timestamptz,
+  add column if not exists rate_per_person      numeric(10, 2) not null default 0,
+  add column if not exists total_amount         numeric(10, 2) not null default 0,
+  add column if not exists first_payment_amount numeric(10, 2) not null default 0,
+  add column if not exists balance_amount       numeric(10, 2) not null default 0,
+  add column if not exists payment_method       public.payment_method,
+  add column if not exists payment_reference    text,
+  add column if not exists payment_account_name text,
+  add column if not exists payment_status       public.payment_status not null default 'UNPAID',
+  add column if not exists payment_submitted_at timestamptz,
+  add column if not exists payment_verified_at  timestamptz,
+  add column if not exists admin_note           text,
+  add column if not exists timeline             jsonb not null default '[]'::jsonb,
+  add column if not exists messages             jsonb not null default '[]'::jsonb;
 
 -- 2.6 advisories — park announcements (Module 4)
 create table if not exists public.advisories (
@@ -366,24 +402,24 @@ insert into public.species
   (category_id, common_name, local_name, scientific_name, conservation_status,
    seasonality, habitat, description, featured_image, slug)
 values
-  ('c1000000-0000-4000-8000-000000000001', 'Philippine duck', 'Papan', 'Anas luzonica', 'VU', 'RESIDENT', 'Shallow lake margins and flooded grassland', 'A Philippine endemic and the park''s flagship waterbird. Pairs nest in the reeds on the eastern shore; the lake holds one of the few stable populations left in Mindoro.', '/images/ducklings.jpg', 'philippine-duck'),
-  ('c1000000-0000-4000-8000-000000000001', 'Little egret', 'Tagak', 'Egretta garzetta', 'LC', 'MIGRATORY', 'Mudflats, fishpond edges and the river mouths', 'Arrives with the northeast monsoon and hunts by shuffling its feet to flush small fish. The white flocks on the northern flats from November onward are mostly this species.', '/images/ducklings.jpg', 'little-egret'),
-  ('c1000000-0000-4000-8000-000000000001', 'Purple heron', null, 'Ardea purpurea', 'LC', 'RESIDENT', 'Tall reed beds and densely vegetated marsh', 'Secretive and easily overlooked — it freezes with its neck vertical when a boat approaches. Best located by its harsh, grating call at dawn.', '/images/ducklings.jpg', 'purple-heron'),
-  ('c1000000-0000-4000-8000-000000000001', 'Wandering whistling duck', null, 'Dendrocygna arcuata', 'LC', 'RESIDENT', 'Open water and floating vegetation beds', 'Highly gregarious, often counted in flocks of fifty or more. The whistling call carries across the lake well before the birds are visible.', '/images/ducklings.jpg', 'wandering-whistling-duck'),
-  ('c1000000-0000-4000-8000-000000000001', 'Great egret', null, 'Ardea alba', 'LC', 'MIGRATORY', 'Open shallows and drained fishponds', 'The largest white heron on the lake. A winter visitor that arrives thin after the flight from East Asia and spends the first weeks feeding almost continuously.', '/images/ducklings.jpg', 'great-egret'),
-  ('c1000000-0000-4000-8000-000000000002', 'Milkfish', 'Bangus', 'Chanos chanos', 'LC', 'SEASONAL', 'Lake shallows, river mouths and brackish outlets', 'Runs into the lake from coastal waters and is the mainstay of lakeside aquaculture. Juveniles shelter in the flooded margins before returning downstream.', '/images/hero-lake.jpg', 'milkfish'),
-  ('c1000000-0000-4000-8000-000000000002', 'Mudfish', 'Dalag', 'Channa striata', 'LC', 'RESIDENT', 'Slow water, mud bottoms and flooded grass', 'An obligate air-breather, which is how it survives the low-oxygen shallows in the dry season. A staple of the local catch and a favourite of herons.', '/images/hero-lake.jpg', 'mudfish'),
-  ('c1000000-0000-4000-8000-000000000002', 'Nile tilapia', null, 'Oreochromis niloticus', 'LC', 'RESIDENT', 'Open water and warm shallows', 'Introduced and now widespread. Included here because it is what most visitors actually see at the boat landing — and because it competes with native species for nesting cover.', '/images/hero-lake.jpg', 'nile-tilapia'),
-  ('c1000000-0000-4000-8000-000000000002', 'Flathead goby', 'Biya', 'Glossogobius giuris', 'LC', 'RESIDENT', 'Sand and gravel runs near the inlets', 'A small, bottom-dwelling native that sits motionless on the substrate. Common in the clear water where the eastern streams enter the lake.', '/images/hero-lake.jpg', 'flathead-goby'),
-  ('c1000000-0000-4000-8000-000000000003', 'Common green frog', 'Palaka', 'Hoplobatrachus rugulosus', 'LC', 'RESIDENT', 'Flooded grass and the marsh edge', 'The loudest voice on the lake after heavy rain. Choruses start within an hour of the first downpour and continue well into the night.', '/images/shoreline.jpg', 'common-green-frog'),
-  ('c1000000-0000-4000-8000-000000000003', 'Water monitor', 'Bayawak', 'Varanus salvator', 'LC', 'RESIDENT', 'Shoreline forest, marsh edge and floating logs', 'Regularly seen swimming between the reed beds. Despite the size, it avoids boats and is more often heard crashing into the water than watched.', '/images/shoreline.jpg', 'water-monitor'),
-  ('c1000000-0000-4000-8000-000000000003', 'Many-lined sun skink', null, 'Eutropis multifasciata', 'LC', 'RESIDENT', 'Dry banks, paths and cleared ground', 'The small brown lizard on every sunlit track. Fast, common, and the main reason the park asks visitors to keep to marked paths.', '/images/shoreline.jpg', 'common-sunken-eyed-skink'),
-  ('c1000000-0000-4000-8000-000000000004', 'Large flying fox', 'Kabag', 'Pteropus vampyrus', 'EN', 'RESIDENT', 'Remaining lowland forest along the shoreline', 'A fruit bat with a two-metre wingspan that commutes over the lake at dusk. Roost trees are the limiting factor, which is why the shoreline forest is closed to clearing.', '/images/lake-canopy.jpg', 'large-flying-fox'),
-  ('c1000000-0000-4000-8000-000000000004', 'Common fruit bat', null, 'Rousettus amplexicaudatus', 'LC', 'RESIDENT', 'Caves and dense shoreline trees', 'The smaller, more numerous fruit bat of the lakeside. Unlike the insect-eating bats it is easily seen at dusk, flying a direct line rather than fluttering.', '/images/lake-canopy.jpg', 'common-fruit-bat'),
-  ('c1000000-0000-4000-8000-000000000005', 'Blue water lily', 'Lawa-lawaan', 'Nymphaea nouchali', 'LC', 'RESIDENT', 'Still, shallow water over mud', 'Opens in the morning and closes by early afternoon. The floating leaves are the platform small frogs and insects use to cross open water.', '/images/shoreline.jpg', 'blue-water-lily'),
-  ('c1000000-0000-4000-8000-000000000005', 'Common reed', 'Tambô', 'Phragmites australis', 'LC', 'RESIDENT', 'Lake margin and the eastern marsh', 'Forms the tall wall of vegetation that makes the eastern marsh impassable by boat. It is also the nesting cover that keeps the Philippine duck population viable.', '/images/shoreline.jpg', 'common-reed'),
-  ('c1000000-0000-4000-8000-000000000005', 'Water hyacinth', null, 'Eichhornia crassipes', 'LC', 'SEASONAL', 'Nutrient-rich shallows and slow inlets', 'An introduced floating plant that mats over sheltered water in the wet season. The park office clears it from access channels before each tour season.', '/images/shoreline.jpg', 'water-hyacinth'),
-  ('c1000000-0000-4000-8000-000000000005', 'Freshwater mangrove', 'Putat', 'Barringtonia racemosa', 'LC', 'RESIDENT', 'Waterlogged banks and the lake edge', 'Leans out over the water with its roots in the flood line. The pendulous pink flower spikes are the easiest way to identify it from a boat.', '/images/shoreline.jpg', 'freshwater-mangrove')
+  ('c1000000-0000-4000-8000-000000000001', 'Philippine duck', 'Papan', 'Anas luzonica', 'VU', 'RESIDENT', 'Shallow lake margins and flooded grassland', 'A Philippine endemic and the park''s flagship waterbird. Pairs nest in the reeds on the eastern shore; the lake holds one of the few stable populations left in Mindoro.', '/images/species/philippine-duck.webp', 'philippine-duck'),
+  ('c1000000-0000-4000-8000-000000000001', 'Little egret', 'Tagak', 'Egretta garzetta', 'LC', 'MIGRATORY', 'Mudflats, fishpond edges and the river mouths', 'Arrives with the northeast monsoon and hunts by shuffling its feet to flush small fish. The white flocks on the northern flats from November onward are mostly this species.', '/images/species/little-egret.webp', 'little-egret'),
+  ('c1000000-0000-4000-8000-000000000001', 'Purple heron', null, 'Ardea purpurea', 'LC', 'RESIDENT', 'Tall reed beds and densely vegetated marsh', 'Secretive and easily overlooked — it freezes with its neck vertical when a boat approaches. Best located by its harsh, grating call at dawn.', '/images/species/purple-heron.webp', 'purple-heron'),
+  ('c1000000-0000-4000-8000-000000000001', 'Wandering whistling duck', null, 'Dendrocygna arcuata', 'LC', 'RESIDENT', 'Open water and floating vegetation beds', 'Highly gregarious, often counted in flocks of fifty or more. The whistling call carries across the lake well before the birds are visible.', '/images/species/wandering-whistling-duck.webp', 'wandering-whistling-duck'),
+  ('c1000000-0000-4000-8000-000000000001', 'Great egret', null, 'Ardea alba', 'LC', 'MIGRATORY', 'Open shallows and drained fishponds', 'The largest white heron on the lake. A winter visitor that arrives thin after the flight from East Asia and spends the first weeks feeding almost continuously.', '/images/species/great-egret.webp', 'great-egret'),
+  ('c1000000-0000-4000-8000-000000000002', 'Milkfish', 'Bangus', 'Chanos chanos', 'LC', 'SEASONAL', 'Lake shallows, river mouths and brackish outlets', 'Runs into the lake from coastal waters and is the mainstay of lakeside aquaculture. Juveniles shelter in the flooded margins before returning downstream.', '/images/species/milkfish.webp', 'milkfish'),
+  ('c1000000-0000-4000-8000-000000000002', 'Mudfish', 'Dalag', 'Channa striata', 'LC', 'RESIDENT', 'Slow water, mud bottoms and flooded grass', 'An obligate air-breather, which is how it survives the low-oxygen shallows in the dry season. A staple of the local catch and a favourite of herons.', '/images/species/mudfish.webp', 'mudfish'),
+  ('c1000000-0000-4000-8000-000000000002', 'Nile tilapia', null, 'Oreochromis niloticus', 'LC', 'RESIDENT', 'Open water and warm shallows', 'Introduced and now widespread. Included here because it is what most visitors actually see at the boat landing — and because it competes with native species for nesting cover.', '/images/species/nile-tilapia.webp', 'nile-tilapia'),
+  ('c1000000-0000-4000-8000-000000000002', 'Flathead goby', 'Biya', 'Glossogobius giuris', 'LC', 'RESIDENT', 'Sand and gravel runs near the inlets', 'A small, bottom-dwelling native that sits motionless on the substrate. Common in the clear water where the eastern streams enter the lake.', '/images/species/flathead-goby.webp', 'flathead-goby'),
+  ('c1000000-0000-4000-8000-000000000003', 'Common green frog', 'Palaka', 'Hoplobatrachus rugulosus', 'LC', 'RESIDENT', 'Flooded grass and the marsh edge', 'The loudest voice on the lake after heavy rain. Choruses start within an hour of the first downpour and continue well into the night.', '/images/species/common-green-frog.webp', 'common-green-frog'),
+  ('c1000000-0000-4000-8000-000000000003', 'Water monitor', 'Bayawak', 'Varanus salvator', 'LC', 'RESIDENT', 'Shoreline forest, marsh edge and floating logs', 'Regularly seen swimming between the reed beds. Despite the size, it avoids boats and is more often heard crashing into the water than watched.', '/images/species/water-monitor.webp', 'water-monitor'),
+  ('c1000000-0000-4000-8000-000000000003', 'Many-lined sun skink', null, 'Eutropis multifasciata', 'LC', 'RESIDENT', 'Dry banks, paths and cleared ground', 'The small brown lizard on every sunlit track. Fast, common, and the main reason the park asks visitors to keep to marked paths.', '/images/species/common-sunken-eyed-skink.webp', 'common-sunken-eyed-skink'),
+  ('c1000000-0000-4000-8000-000000000004', 'Large flying fox', 'Kabag', 'Pteropus vampyrus', 'EN', 'RESIDENT', 'Remaining lowland forest along the shoreline', 'A fruit bat with a two-metre wingspan that commutes over the lake at dusk. Roost trees are the limiting factor, which is why the shoreline forest is closed to clearing.', '/images/species/large-flying-fox.webp', 'large-flying-fox'),
+  ('c1000000-0000-4000-8000-000000000004', 'Common fruit bat', null, 'Rousettus amplexicaudatus', 'LC', 'RESIDENT', 'Caves and dense shoreline trees', 'The smaller, more numerous fruit bat of the lakeside. Unlike the insect-eating bats it is easily seen at dusk, flying a direct line rather than fluttering.', '/images/species/common-fruit-bat.webp', 'common-fruit-bat'),
+  ('c1000000-0000-4000-8000-000000000005', 'Blue water lily', 'Lawa-lawaan', 'Nymphaea nouchali', 'LC', 'RESIDENT', 'Still, shallow water over mud', 'Opens in the morning and closes by early afternoon. The floating leaves are the platform small frogs and insects use to cross open water.', '/images/species/blue-water-lily.webp', 'blue-water-lily'),
+  ('c1000000-0000-4000-8000-000000000005', 'Common reed', 'Tambô', 'Phragmites australis', 'LC', 'RESIDENT', 'Lake margin and the eastern marsh', 'Forms the tall wall of vegetation that makes the eastern marsh impassable by boat. It is also the nesting cover that keeps the Philippine duck population viable.', '/images/species/common-reed.webp', 'common-reed'),
+  ('c1000000-0000-4000-8000-000000000005', 'Water hyacinth', null, 'Eichhornia crassipes', 'LC', 'SEASONAL', 'Nutrient-rich shallows and slow inlets', 'An introduced floating plant that mats over sheltered water in the wet season. The park office clears it from access channels before each tour season.', '/images/species/water-hyacinth.webp', 'water-hyacinth'),
+  ('c1000000-0000-4000-8000-000000000005', 'Freshwater mangrove', 'Putat', 'Barringtonia racemosa', 'LC', 'RESIDENT', 'Waterlogged banks and the lake edge', 'Leans out over the water with its roots in the flood line. The pendulous pink flower spikes are the easiest way to identify it from a boat.', '/images/species/freshwater-mangrove.webp', 'freshwater-mangrove')
 on conflict (slug) do nothing;
 
 insert into public.tours
