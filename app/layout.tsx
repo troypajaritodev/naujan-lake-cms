@@ -4,6 +4,7 @@ import { AuthProvider } from "@/components/auth-provider";
 import SiteChrome from "@/components/site-chrome";
 import { getBannerAdvisory } from "@/lib/advisories";
 import { site } from "@/lib/site";
+import { siteUrl } from "@/lib/site-url";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -26,9 +27,7 @@ const fraunces = Fraunces({
 });
 
 export const metadata: Metadata = {
-  metadataBase: new URL(
-    process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000",
-  ),
+  metadataBase: new URL(siteUrl),
   title: {
     default: `${site.park} · Visitor Hub`,
     template: `%s · ${site.park}`,

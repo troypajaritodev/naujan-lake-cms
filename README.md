@@ -31,7 +31,8 @@ security and a WCAG notes pass have shipped; admin CRUD, Supabase Auth and the
 RLS verification are next. The per-use-case status table lives in
 [`docs/PRD.md` §12.4](./docs/PRD.md#124-implementation-status), and
 [`docs/BACKEND_STATUS.md`](./docs/BACKEND_STATUS.md) tracks the live
-backend/database checklist.
+backend/database checklist. [`docs/DEPLOYMENT.md`](./docs/DEPLOYMENT.md) has
+the Vercel steps and the demo-versus-live notes.
 
 No database or `.env.local` is required to run the site — see *Data layer* below.
 

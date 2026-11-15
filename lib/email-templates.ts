@@ -9,10 +9,9 @@
 import type { AdvisoryPreview } from "@/lib/advisories";
 import type { EmailMessage } from "@/lib/email";
 import type { Inquiry } from "@/lib/inquiries";
+import { siteUrl } from "@/lib/site-url";
 
-const SITE_URL = (
-  process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000"
-).replace(/\/$/, "");
+const SITE_URL = siteUrl;
 
 const PARK_NAME = "Naujan Lake National Park";
 
