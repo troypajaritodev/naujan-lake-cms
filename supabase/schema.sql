@@ -31,7 +31,8 @@ do $$ begin create type public.inquiry_status as enum ('PENDING', 'ON_PROCESS', 
 do $$ begin alter type public.inquiry_status add value if not exists 'ON_PROCESS'; exception when duplicate_object then null; end $$;
 do $$ begin alter type public.inquiry_status add value if not exists 'COMPLETED'; exception when duplicate_object then null; end $$;
 do $$ begin alter type public.inquiry_status add value if not exists 'CANCELLED'; exception when duplicate_object then null; end $$;
-do $$ begin create type public.payment_method as enum ('GCASH', 'MAYA', 'BANK_TRANSFER'); exception when duplicate_object then null; end $$;
+do $$ begin create type public.payment_method as enum ('GCASH', 'MAYA', 'BANK_TRANSFER', 'ON_SITE_CASH'); exception when duplicate_object then null; end $$;
+do $$ begin alter type public.payment_method add value if not exists 'ON_SITE_CASH'; exception when duplicate_object then null; end $$;
 do $$ begin create type public.payment_status as enum ('UNPAID', 'PENDING_VERIFICATION', 'VERIFIED', 'REFUNDED'); exception when duplicate_object then null; end $$;
 do $$ begin create type public.advisory_severity as enum ('CRITICAL', 'WARNING', 'INFO'); exception when duplicate_object then null; end $$;
 do $$ begin create type public.subscriber_status as enum ('ACTIVE', 'UNSUBSCRIBED'); exception when duplicate_object then null; end $$;
@@ -360,7 +361,24 @@ create policy inquiries_select_own on public.tour_inquiries
 
 drop policy if exists inquiries_admin_update on public.tour_inquiries;
 create policy inquiries_admin_update on public.tour_inquiries
-  for update using (public.is_admin()) with check (public.is_admin());
+  for update using (
+    public.is_admin()
+    or user_id = auth.uid()
+    or lower(email) = lower(coalesce(auth.jwt() ->> 'email', ''))
+  )
+  with check (
+    public.is_admin()
+    or user_id = auth.uid()
+    or lower(email) = lower(coalesce(auth.jwt() ->> 'email', ''))
+  );
+
+drop policy if exists inquiries_delete_own on public.tour_inquiries;
+create policy inquiries_delete_own on public.tour_inquiries
+  for delete using (
+    public.is_admin()
+    or user_id = auth.uid()
+    or lower(email) = lower(coalesce(auth.jwt() ->> 'email', ''))
+  );
 
 -- newsletter: anyone may subscribe, only staff may read the audience
 drop policy if exists subscribers_insert on public.subscribers;
@@ -447,7 +465,7 @@ values
    array['blue-water-lily', 'common-reed'],
    '[{"time":"05:00","title":"Departure","detail":"Board at the park jetty while the water is still flat."}]'::jsonb,
    '[{"label":"Boat rental and operator","amount":700},{"label":"Fuel and crew","amount":200},{"label":"Environmental fee","amount":300}]'::jsonb,
-   '/images/hero-lake.jpg'),
+   '/images/tours/sunrise-boat-tour.jpg'),
   ('e1000000-0000-4000-8000-000000000003', 'Lakeside community homestay', 'lakeside-community-homestay',
    'Cultural',
    'An overnight with a host family in a lakeside barangay — fishing stories, local cooking, and a dawn paddle.',
@@ -458,7 +476,7 @@ values
    array['milkfish', 'mudfish', 'nile-tilapia'],
    '[{"time":"Day 1 · 14:00","title":"Arrival and orientation","detail":"Meet the host family and the barangay guide."}]'::jsonb,
    '[{"label":"Homestay (per night)","amount":900},{"label":"Meals (4)","amount":700},{"label":"Village guide","amount":500},{"label":"Environmental fee","amount":300}]'::jsonb,
-   '/images/shoreline.jpg'),
+   '/images/tours/lakeside-community-homestay.jpg'),
   ('e1000000-0000-4000-8000-000000000004', 'Educational research trek', 'educational-research-trek',
    'Research',
    'A field session for student groups: transect walks, water sampling points and an introduction to wetland survey methods.',
@@ -470,7 +488,7 @@ values
          'large-flying-fox', 'common-fruit-bat', 'water-hyacinth', 'freshwater-mangrove'],
    '[{"time":"06:00","title":"Safety briefing and method overview","detail":"Survey ethics, permits and data use."}]'::jsonb,
    '[{"label":"Boat transfer","amount":500},{"label":"Research guide","amount":700},{"label":"Environmental fee","amount":300}]'::jsonb,
-   '/images/lake-canopy.jpg')
+   '/images/tours/educational-research-trek.jpg')
 on conflict (slug) do update
   set species_slugs = excluded.species_slugs
   where public.tours.species_slugs = '{}';
