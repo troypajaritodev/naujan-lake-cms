@@ -15,9 +15,15 @@
  */
 
 import { updateTag } from "next/cache";
-import { severityLabels, type Advisory, type AdvisorySeverity } from "@/lib/advisories";
+import {
+  formatAdvisoryDate,
+  severityLabels,
+  type Advisory,
+  type AdvisorySeverity,
+} from "@/lib/advisories";
 import { readOverrides, updateOverrides } from "@/lib/content-store";
-import { cleanText } from "@/lib/sanitize";
+import { dispatchAdvisoryDigest } from "@/lib/notifications";
+import { cleanEmail, cleanText } from "@/lib/sanitize";
 
 export type ActionResult =
   | { ok: true; slug: string; message: string }
@@ -85,6 +91,13 @@ export async function saveAdvisoryAction(
     6,
   );
   const isActiveBanner = formData.get("isActiveBanner") === "on";
+  const dispatchSubscribers = formData.get("dispatchSubscribers") === "on";
+  const recipientRaw = cleanText(String(formData.get("recipients") ?? ""), 4000);
+  const recipients = recipientRaw
+    .split(",")
+    .map((email) => cleanEmail(email))
+    .filter((email) => email.includes("@"))
+    .slice(0, 200);
 
   if (title.length < 8) {
     return { ok: false, field: "title", message: "Give the notice a real headline (at least 8 characters)." };
@@ -179,12 +192,30 @@ export async function saveAdvisoryAction(
 
   updateTag("advisories");
 
+  let dispatchNote = "";
+  if (dispatchSubscribers && recipients.length > 0) {
+    const digest = await dispatchAdvisoryDigest(
+      {
+        slug: record.slug,
+        title: record.title,
+        severity: record.severity,
+        severityLabel: record.severityLabel,
+        dateISO: record.publishedAt,
+        date: formatAdvisoryDate(record.publishedAt),
+        excerpt: record.excerpt,
+      },
+      recipients,
+    );
+    dispatchNote = ` Advisory alert dispatched to ${digest.sent} subscriber${digest.sent === 1 ? "" : "s"}.`;
+  }
+
   return {
     ok: true,
     slug: record.slug,
-    message: existingSlug
-      ? `Updated “${record.title}”. The public board is live.`
-      : `Published “${record.title}”. It is on the board now.`,
+    message:
+      (existingSlug
+        ? `Updated “${record.title}”. The public board is live.`
+        : `Published “${record.title}”. It is on the board now.`) + dispatchNote,
   };
 }
 
