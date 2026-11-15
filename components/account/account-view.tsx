@@ -6,8 +6,10 @@ import { useRouter } from "next/navigation";
 import {
   AlertCircle,
   ArrowRight,
+  ArrowUpRight,
   Ban,
   Check,
+  LayoutDashboard,
   Loader2,
   LogOut,
   ShieldCheck,
@@ -34,6 +36,15 @@ const dateFormat = new Intl.DateTimeFormat("en-PH", {
 function formatDate(iso: string) {
   const parsed = new Date(iso);
   return Number.isNaN(parsed.getTime()) ? "—" : dateFormat.format(parsed);
+}
+
+function initials(name: string) {
+  return name
+    .split(" ")
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? "")
+    .join("");
 }
 
 /** One plain sentence per status, so the account page never needs a legend. */
@@ -94,7 +105,6 @@ export default function AccountView() {
 }
 
 function AccountDashboard({ user }: { user: SessionUser }) {
-  const router = useRouter();
   const { updateProfile, changePassword, signOut } = useAuth();
 
   // Seeded from props, so no effect is needed to keep the form in sync.
@@ -202,15 +212,46 @@ function AccountDashboard({ user }: { user: SessionUser }) {
   return (
     <section className="bg-sand-50 pt-28 pb-20 lg:pt-36">
       <div className="mx-auto w-full max-w-6xl px-5 sm:px-8 lg:px-12">
-        <p className="text-[11px] font-medium tracking-[0.22em] text-sand-600 uppercase">
-          Visitor account
-        </p>
-        <h1 className="mt-3 font-display text-[clamp(1.9rem,4vw,2.8rem)] leading-tight font-light text-ink">
-          Hello, {user.fullName.split(" ")[0]}.
-        </h1>
-        <p className="mt-2 text-[13.5px] text-ink-soft/75">
-          {user.email} · member since {formatDate(user.createdAt)}
-        </p>
+        <div className="flex flex-wrap items-end justify-between gap-6">
+          <div className="flex items-center gap-4">
+            <span
+              aria-hidden="true"
+              className="grid size-14 shrink-0 place-items-center rounded-2xl bg-lake-900 font-display text-[19px] text-sand-50 shadow-[0_10px_30px_-12px_rgba(12,26,23,0.5)]"
+            >
+              {initials(user.fullName)}
+            </span>
+            <div>
+              <p className="text-[11px] font-medium tracking-[0.22em] text-sand-600 uppercase">
+                {user.role === "admin" ? "Park staff account" : "Visitor account"}
+              </p>
+              <h1 className="mt-2 font-display text-[clamp(1.8rem,4vw,2.6rem)] leading-tight font-light text-ink">
+                Hello, {user.fullName.split(" ")[0]}.
+              </h1>
+              <p className="mt-1.5 text-[13px] text-ink-soft/70">
+                {user.email} · member since {formatDate(user.createdAt)}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            {user.role === "admin" && (
+              <Link
+                href="/admin"
+                className="inline-flex items-center gap-2 rounded-full border border-ink/15 px-4 py-2.5 text-[12.5px] font-semibold text-ink transition-colors hover:bg-white"
+              >
+                <LayoutDashboard className="size-3.5" strokeWidth={2} aria-hidden="true" />
+                Admin panel
+              </Link>
+            )}
+            <Link
+              href="/inquire"
+              className="inline-flex items-center gap-2 rounded-full bg-lake-800 px-4 py-2.5 text-[12.5px] font-semibold text-sand-50 transition-colors hover:bg-lake-700"
+            >
+              Plan a trip
+              <ArrowUpRight className="size-3.5" strokeWidth={2.2} aria-hidden="true" />
+            </Link>
+          </div>
+        </div>
 
         <div className="mt-10 grid gap-6 lg:grid-cols-12">
           <div className="space-y-6 lg:col-span-8">
@@ -385,18 +426,21 @@ function AccountDashboard({ user }: { user: SessionUser }) {
                   ? "Full access to the content management panel."
                   : "Browse packages, send inquiries and manage your own profile."}
               </p>
+              <p className="mt-4 truncate border-t border-white/10 pt-4 font-mono text-[11.5px] text-sand-300/60">
+                {user.email}
+              </p>
 
               <button
                 type="button"
-                onClick={() => {
-                  signOut();
-                  router.push("/");
-                }}
-                className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-full bg-white/10 px-4 py-3 text-[13px] font-semibold text-sand-50 transition-colors hover:bg-white/15"
+                onClick={() => signOut()}
+                className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-full bg-white/10 px-4 py-3 text-[13px] font-semibold text-sand-50 transition-colors hover:bg-white/15"
               >
                 <LogOut className="size-4" strokeWidth={2} />
                 Sign out
               </button>
+              <p className="mt-2.5 text-center text-[10.5px] leading-relaxed text-sand-300/45">
+                You will be returned to the sign-in page.
+              </p>
             </div>
 
             {/* Inquiries */}

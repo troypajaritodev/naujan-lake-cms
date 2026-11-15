@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { Search, Users } from "lucide-react";
 import StatCard from "@/components/admin/stat-card";
 import { useAuth } from "@/components/auth-provider";
-import { listUsers, summariseUsers, type Role, type SessionUser } from "@/lib/auth";
+import { summariseUsers, useUsers, type Role } from "@/lib/auth";
 
 const dateFormat = new Intl.DateTimeFormat("en-PH", {
   day: "numeric",
@@ -41,7 +41,7 @@ function initials(name: string) {
 
 export default function AdminUsersPage() {
   const { user: currentUser } = useAuth();
-  const [users] = useState<SessionUser[]>(() => listUsers());
+  const users = useUsers();
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<Filter>("ALL");
 

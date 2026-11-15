@@ -19,6 +19,7 @@ npm install
 npm run dev      # http://localhost:3000
 npm run build    # production build
 npm run lint     # eslint
+npm run db:status  # check the Supabase schema and key
 ```
 
 ## Status
@@ -28,7 +29,9 @@ progress: the Supabase read layer, the site-wide advisory banner, species
 records with search and filters, related tours, inquiry emails, baseline
 security and a WCAG notes pass have shipped; admin CRUD, Supabase Auth and the
 RLS verification are next. The per-use-case status table lives in
-[`docs/PRD.md` §12.4](./docs/PRD.md#124-implementation-status).
+[`docs/PRD.md` §12.4](./docs/PRD.md#124-implementation-status), and
+[`docs/BACKEND_STATUS.md`](./docs/BACKEND_STATUS.md) tracks the live
+backend/database checklist.
 
 No database or `.env.local` is required to run the site — see *Data layer* below.
 
@@ -41,9 +44,13 @@ database: that is demo mode.
 1. Create a Supabase project and run [`supabase/schema.sql`](./supabase/schema.sql)
    in the SQL editor. It creates the seven tables, the RLS policies and the demo
    seed rows.
-2. Copy `.env.example` to `.env.local` and fill in the two values from
-   Supabase → Project Settings → API.
+2. Copy `.env.example` to `.env.local` and fill in the two public values from
+   Supabase → Project Settings → API. Newer projects call the browser key
+   **publishable** (`sb_publishable_…`); older ones call it **anon**. Either
+   variable name works. Never expose the `service_role` key.
 3. Restart `npm run dev`.
+4. Run `npm run db:status` to confirm the schema is reachable. It prints one
+   line per table and names the missing ones without printing any key.
 
 | Module | Supabase table | Fallback |
 | :--- | :--- | :--- |

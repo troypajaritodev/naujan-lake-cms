@@ -8,6 +8,7 @@ import {
   useSyncExternalStore,
   type ReactNode,
 } from "react";
+import { useRouter } from "next/navigation";
 import {
   changePassword as changePasswordRecord,
   getServerSessionSnapshot,
@@ -28,7 +29,11 @@ type AuthValue = {
   ready: boolean;
   register: (input: RegisterInput) => Promise<SessionUser>;
   signIn: (email: string, password: string) => Promise<SessionUser>;
-  signOut: () => void;
+  /**
+   * Clear the session and leave the protected screen. Defaults to the sign-in
+   * page; pass a path to land somewhere else (for example `/`).
+   */
+  signOut: (redirectTo?: string) => void;
   updateProfile: (input: ProfileInput) => SessionUser;
   changePassword: (current: string, next: string) => Promise<void>;
 };
@@ -40,6 +45,7 @@ const clientReady = () => true;
 const serverReady = () => false;
 
 export function AuthProvider({ children }: { children: ReactNode }) {
+  const router = useRouter();
   // The session lives in localStorage, so it is read as an external store —
   // every tab re-renders when the account or session key changes.
   const user = useSyncExternalStore(
@@ -57,9 +63,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return signInRecord(email, password);
   }, []);
 
-  const signOut = useCallback(() => {
-    signOutRecord();
-  }, []);
+  const signOut = useCallback(
+    (redirectTo = "/login?signedOut=1") => {
+      signOutRecord();
+
+      // Full navigation, not `router.replace`: the protected screen must not
+      // get a chance to run its "no session" guard (which would rewrite the
+      // URL with `?next=`) before the sign-in page renders.
+      if (typeof window !== "undefined") {
+        window.location.replace(redirectTo);
+      } else {
+        router.replace(redirectTo);
+      }
+    },
+    [router],
+  );
 
   const updateProfile = useCallback((input: ProfileInput) => {
     return updateProfileRecord(input);

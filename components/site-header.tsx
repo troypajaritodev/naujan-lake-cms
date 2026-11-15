@@ -2,30 +2,67 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ArrowUpRight,
+  ChevronDown,
   Clock,
+  LayoutDashboard,
+  LogOut,
   MapPin,
   Menu,
   Phone,
   ShieldCheck,
   User,
+  UserRound,
   X,
 } from "lucide-react";
 import BrandMark from "@/components/brand-mark";
 import { useAuth } from "@/components/auth-provider";
 import { navigation, site } from "@/lib/site";
 
+function initials(name: string) {
+  return name
+    .split(" ")
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? "")
+    .join("");
+}
+
 export default function SiteHeader() {
   const pathname = usePathname();
   const [scrolled, setScrolled] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
-  const { user, ready } = useAuth();
+  const [accountOpen, setAccountOpen] = useState(false);
+  const accountRef = useRef<HTMLDivElement>(null);
+  const { user, ready, signOut } = useAuth();
 
   const accountLabel =
     ready && user ? user.fullName.split(" ")[0] : "Sign in";
   const accountHref = ready && user ? "/account" : "/login";
+
+  // The account menu closes on an outside click or Escape; menu items close it
+  // through their own onClick handlers.
+  useEffect(() => {
+    if (!accountOpen) return;
+
+    const onPointerDown = (event: MouseEvent) => {
+      if (!accountRef.current?.contains(event.target as Node)) {
+        setAccountOpen(false);
+      }
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setAccountOpen(false);
+    };
+
+    document.addEventListener("mousedown", onPointerDown);
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [accountOpen]);
 
   const isHome = pathname === "/";
   // Floats over the hero photo until the page scrolls or the drawer opens.
@@ -152,26 +189,106 @@ export default function SiteHeader() {
         </nav>
 
         <div className="flex items-center gap-2">
-          <Link
-            href={accountHref}
-            className={`hidden items-center gap-1.5 rounded-full px-3 py-2 text-[13px] font-medium transition-colors duration-300 sm:inline-flex ${
-              onDark ? "text-sand-100/80 hover:text-white" : "text-ink-soft hover:text-ink"
-            }`}
-          >
-            <User className="size-4" strokeWidth={1.8} aria-hidden="true" />
-            {accountLabel}
-          </Link>
+          {ready && user ? (
+            <div ref={accountRef} className="relative hidden sm:block">
+              <button
+                type="button"
+                onClick={() => setAccountOpen((open) => !open)}
+                aria-expanded={accountOpen}
+                aria-haspopup="menu"
+                aria-controls="account-menu"
+                className={`inline-flex items-center gap-2 rounded-full py-1.5 pr-2.5 pl-1.5 text-[13px] font-medium transition-colors duration-300 ${
+                  onDark
+                    ? "text-sand-100/85 hover:bg-white/10 hover:text-white"
+                    : "text-ink-soft hover:bg-ink/5 hover:text-ink"
+                }`}
+              >
+                <span
+                  aria-hidden="true"
+                  className={`grid size-7 shrink-0 place-items-center rounded-full text-[10px] font-semibold tracking-[0.04em] ${
+                    onDark
+                      ? "bg-white/15 text-sand-50"
+                      : "bg-lake-100 text-lake-800"
+                  }`}
+                >
+                  {initials(user.fullName)}
+                </span>
+                <span className="max-w-[7.5rem] truncate">{accountLabel}</span>
+                <ChevronDown
+                  className={`size-3.5 transition-transform duration-300 ${accountOpen ? "rotate-180" : ""}`}
+                  strokeWidth={2}
+                  aria-hidden="true"
+                />
+              </button>
 
-          {ready && user?.role === "admin" && (
+              {accountOpen && (
+                <div
+                  id="account-menu"
+                  role="menu"
+                  aria-label="Account menu"
+                  className="absolute top-[calc(100%+0.55rem)] right-0 w-64 overflow-hidden rounded-2xl bg-white shadow-[0_18px_50px_-16px_rgba(12,26,23,0.35)] ring-1 ring-ink/10"
+                >
+                  <div className="border-b border-ink/8 bg-sand-50/70 px-4 py-3.5">
+                    <p className="truncate text-[13.5px] font-semibold text-ink">
+                      {user.fullName}
+                    </p>
+                    <p className="mt-0.5 truncate text-[11.5px] text-ink-soft/60">
+                      {user.email}
+                    </p>
+                    <p className="mt-2 inline-flex rounded-full bg-white px-2 py-0.5 text-[9px] font-semibold tracking-[0.12em] text-sand-700 uppercase ring-1 ring-ink/8 ring-inset">
+                      {user.role === "admin" ? "Park staff" : "Visitor"}
+                    </p>
+                  </div>
+
+                  <div className="p-1.5">
+                    <Link
+                      href="/account"
+                      role="menuitem"
+                      onClick={() => setAccountOpen(false)}
+                      className="flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-[13px] font-medium text-ink-soft transition-colors hover:bg-sand-100 hover:text-ink"
+                    >
+                      <UserRound className="size-4 text-sand-600" strokeWidth={1.8} aria-hidden="true" />
+                      My account
+                    </Link>
+                    {user.role === "admin" && (
+                      <Link
+                        href="/admin"
+                        role="menuitem"
+                        onClick={() => setAccountOpen(false)}
+                        className="flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-[13px] font-medium text-ink-soft transition-colors hover:bg-sand-100 hover:text-ink"
+                      >
+                        <LayoutDashboard className="size-4 text-sand-600" strokeWidth={1.8} aria-hidden="true" />
+                        Admin panel
+                      </Link>
+                    )}
+                  </div>
+
+                  <div className="border-t border-ink/8 p-1.5">
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={() => {
+                        setAccountOpen(false);
+                        signOut();
+                      }}
+                      className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-left text-[13px] font-medium text-alert-700 transition-colors hover:bg-alert-50"
+                    >
+                      <LogOut className="size-4" strokeWidth={1.8} aria-hidden="true" />
+                      Sign out
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : (
             <Link
-              href="/admin"
-              className={`hidden rounded-full border px-3 py-1.5 text-[10px] font-semibold tracking-[0.12em] uppercase transition-colors sm:inline-flex ${
-                onDark
-                  ? "border-white/25 text-sand-100/80 hover:bg-white/10"
-                  : "border-ink/15 text-ink-soft hover:bg-ink/5"
+              href={accountHref}
+              className={`hidden items-center gap-1.5 rounded-full px-3 py-2 text-[13px] font-medium transition-colors duration-300 sm:inline-flex ${
+                onDark ? "text-sand-100/80 hover:text-white" : "text-ink-soft hover:text-ink"
               }`}
             >
-              Admin
+              <User className="size-4" strokeWidth={1.8} aria-hidden="true" />
+              Sign in
             </Link>
           )}
 
@@ -281,6 +398,20 @@ export default function SiteHeader() {
               <User className="size-4" strokeWidth={2} aria-hidden="true" />
               {ready && user ? `Signed in as ${accountLabel}` : "Sign in"}
             </Link>
+            {ready && user && (
+              <button
+                type="button"
+                tabIndex={menuOpen ? 0 : -1}
+                onClick={() => {
+                  setMenuOpen(false);
+                  signOut();
+                }}
+                className="flex w-full items-center justify-center gap-2 rounded-full px-5 py-3 text-[13px] font-medium text-sand-200/80 transition-colors hover:bg-white/10 hover:text-white"
+              >
+                <LogOut className="size-4" strokeWidth={2} aria-hidden="true" />
+                Sign out
+              </button>
+            )}
             <Link
               href="/inquire"
               tabIndex={menuOpen ? 0 : -1}

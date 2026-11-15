@@ -6,6 +6,8 @@
  * Swapping this module for Supabase auth later keeps the same public API.
  */
 
+import { useSyncExternalStore } from "react";
+
 export type Role = "admin" | "visitor";
 
 export type SessionUser = {
@@ -342,6 +344,49 @@ export function listUsers(): SessionUser[] {
   return readUsers()
     .map(toSessionUser)
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+}
+
+const EMPTY_USERS: SessionUser[] = [];
+
+let seedSnapshot: SessionUser[] | null = null;
+
+function seedSummaries(): SessionUser[] {
+  seedSnapshot ??= SEED_USERS.map(toSessionUser).sort((a, b) =>
+    b.createdAt.localeCompare(a.createdAt),
+  );
+  return seedSnapshot;
+}
+
+let usersSnapshotRaw: string | null = null;
+let usersSnapshotValue: SessionUser[] = EMPTY_USERS;
+
+/**
+ * Cached snapshot for `useSyncExternalStore`. Unlike `listUsers`, this never
+ * writes to storage — the account tables can therefore render on the server
+ * and hydrate without a "seed count vs stored count" mismatch.
+ */
+export function getUsersSnapshot(): SessionUser[] {
+  if (!canUseStorage()) return EMPTY_USERS;
+
+  const raw = window.localStorage.getItem(USERS_KEY);
+  if (raw !== usersSnapshotRaw) {
+    usersSnapshotRaw = raw;
+    usersSnapshotValue = raw ? listUsers() : seedSummaries();
+  }
+  return usersSnapshotValue;
+}
+
+export function getServerUsersSnapshot(): SessionUser[] {
+  return EMPTY_USERS;
+}
+
+/** Live account list for the admin tables. */
+export function useUsers(): SessionUser[] {
+  return useSyncExternalStore(
+    subscribe,
+    getUsersSnapshot,
+    getServerUsersSnapshot,
+  );
 }
 
 export function summariseUsers(users: SessionUser[]): UserSummary {

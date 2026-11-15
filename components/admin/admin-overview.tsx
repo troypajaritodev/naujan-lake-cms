@@ -10,7 +10,6 @@
  * is the only failure mode this panel really has.
  */
 
-import { useState } from "react";
 import Link from "next/link";
 import {
   ArrowRight,
@@ -22,8 +21,9 @@ import {
   Users,
 } from "lucide-react";
 import StatCard from "@/components/admin/stat-card";
-import { listUsers, summariseUsers } from "@/lib/auth";
+import { summariseUsers, useUsers } from "@/lib/auth";
 import { useInquiries } from "@/lib/inquiries";
+import { useMinuteNow } from "@/lib/now";
 
 const MONTHS = [
   "Jan",
@@ -48,11 +48,11 @@ function formatDay(iso: string): string {
 }
 
 /** How long a request has been sitting in the queue. */
-function age(createdAt: string): string {
+function age(createdAt: string, now: number): string {
   const created = Date.parse(createdAt);
   if (!Number.isFinite(created)) return "—";
 
-  const minutes = Math.max(0, Math.round((Date.now() - created) / 60_000));
+  const minutes = Math.max(0, Math.round((now - created) / 60_000));
   if (minutes < 60) return minutes <= 1 ? "just now" : `${minutes} min ago`;
 
   const hours = Math.round(minutes / 60);
@@ -89,7 +89,16 @@ export default function AdminOverview({
   packages,
 }: OverviewProps) {
   const inquiries = useInquiries();
-  const [accounts] = useState(() => summariseUsers(listUsers()));
+  const accounts = summariseUsers(useUsers());
+
+  // Relative ages use a minute-quantised clock, so the server-rendered label
+  // and the first client render agree.
+  const now = useMinuteNow();
+
+  const ageLabel = (iso: string) => {
+    const day = iso.slice(0, 10);
+    return now === null ? formatDay(day) : age(iso, now);
+  };
 
   const pending = inquiries
     .filter((inquiry) => inquiry.status === "PENDING")
@@ -142,7 +151,7 @@ export default function AdminOverview({
           value={pending.length}
           hint={
             newest
-              ? `Newest arrived ${age(newest.createdAt)}`
+              ? `Newest arrived ${ageLabel(newest.createdAt)}`
               : "Every request has been triaged"
           }
           tone="alert"
@@ -196,7 +205,7 @@ export default function AdminOverview({
               </h2>
               <p className="mt-0.5 text-[12.5px] text-ink-soft/65">
                 {oldest
-                  ? `Oldest request arrived ${age(oldest.createdAt)} · ${today}`
+                  ? `Oldest request arrived ${ageLabel(oldest.createdAt)} · ${today}`
                   : today}
               </p>
             </div>
@@ -234,7 +243,7 @@ export default function AdminOverview({
                     </p>
                   </div>
                   <span className="shrink-0 text-[11px] text-ink-soft/45 tabular-nums">
-                    {age(inquiry.createdAt)}
+                    {ageLabel(inquiry.createdAt)}
                   </span>
                 </li>
               ))}

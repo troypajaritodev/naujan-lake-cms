@@ -45,7 +45,7 @@ export default function RegisterForm() {
     setPending(true);
     try {
       await register(values);
-      router.push("/account");
+      router.replace("/account");
     } catch (error) {
       if (error instanceof AuthError && error.field) {
         setErrors({ [error.field]: error.message });
@@ -63,6 +63,7 @@ export default function RegisterForm() {
       {formError && (
         <div
           role="alert"
+          aria-live="polite"
           className="flex items-start gap-2 rounded-xl bg-alert-50 px-4 py-3 text-[13px] text-alert-700 ring-1 ring-alert-500/20 ring-inset"
         >
           <AlertCircle className="mt-0.5 size-4 shrink-0" strokeWidth={2} />
@@ -185,10 +186,17 @@ export default function RegisterForm() {
         )}
       </button>
 
-      <p className="text-[11.5px] leading-relaxed text-sand-600">
-        Accounts are stored in this browser for the demo build. Passwords are
-        kept as a salted SHA-256 digest, never as plain text.
-      </p>
+      {process.env.NODE_ENV !== "production" ? (
+        <p className="text-[11.5px] leading-relaxed text-sand-600">
+          Demo build: accounts are stored in this browser and passwords are kept
+          as a salted SHA-256 digest, never as plain text.
+        </p>
+      ) : (
+        <p className="text-[11.5px] leading-relaxed text-sand-600">
+          Your details are used only for the inquiries you send and are never
+          shared with third parties.
+        </p>
+      )}
     </form>
   );
 }
