@@ -163,122 +163,122 @@ function applyPatch<T extends { slug: string }>(
   return { ...record, ...patch, slug: record.slug };
 }
 
-  function mergeCollection<T extends { slug: string }>(
-    base: T[],
-    collection: CollectionOverride<T>,
-  ): T[] {
-    const archived = new Set(collection.archived);
-    const seen = new Set<string>();
-    const merged: T[] = [];
+function mergeCollection<T extends { slug: string }>(
+  base: T[],
+  collection: CollectionOverride<T>,
+): T[] {
+  const archived = new Set(collection.archived);
+  const seen = new Set<string>();
+  const merged: T[] = [];
 
-      for (const created of collection.created) {
-        if (archived.has(created.slug) || seen.has(created.slug)) continue;
-        seen.add(created.slug);
-        merged.push(applyPatch(created, collection.edited[created.slug]));
-      }
+  for (const created of collection.created) {
+    if (archived.has(created.slug) || seen.has(created.slug)) continue;
+    seen.add(created.slug);
+    merged.push(applyPatch(created, collection.edited[created.slug]));
+  }
 
-        for (const item of base) {
-          if (archived.has(item.slug) || seen.has(item.slug)) continue;
-          merged.push(applyPatch(item, collection.edited[item.slug]));
-        }
+  for (const item of base) {
+    if (archived.has(item.slug) || seen.has(item.slug)) continue;
+    merged.push(applyPatch(item, collection.edited[item.slug]));
+  }
 
-        return merged;
-      }
+  return merged;
+}
 
-      function archivedFromCollection<T extends { slug: string }>(
-        base: T[],
-        collection: CollectionOverride<T>,
-      ): T[] {
-        const archived = new Set(collection.archived);
-        const bySlug = new Map<string, T>();
+function archivedFromCollection<T extends { slug: string }>(
+  base: T[],
+  collection: CollectionOverride<T>,
+): T[] {
+  const archived = new Set(collection.archived);
+  const bySlug = new Map<string, T>();
 
-        for (const item of [...collection.created, ...base]) {
-          if (archived.has(item.slug) && !bySlug.has(item.slug)) {
-            bySlug.set(item.slug, applyPatch(item, collection.edited[item.slug]));
-          }
-        }
+  for (const item of [...collection.created, ...base]) {
+    if (archived.has(item.slug) && !bySlug.has(item.slug)) {
+      bySlug.set(item.slug, applyPatch(item, collection.edited[item.slug]));
+    }
+  }
 
-        return [...bySlug.values()];
-      }
+  return [...bySlug.values()];
+}
 
-      /**
-       * Published notices: records written from the panel first (newest content wins
-       * the top of the list anyway, since the caller sorts), then the base rows with
-       * any edits applied. Archived slugs drop out of both.
-       */
-      export function mergeAdvisories(
-        base: Advisory[],
-        overrides: ContentOverrides,
-      ): Advisory[] {
-        return mergeCollection(base, overrides.advisories);
-      }
+/**
+ * Published notices: records written from the panel first (newest content wins
+ * the top of the list anyway, since the caller sorts), then the base rows with
+ * any edits applied. Archived slugs drop out of both.
+ */
+export function mergeAdvisories(
+  base: Advisory[],
+  overrides: ContentOverrides,
+): Advisory[] {
+  return mergeCollection(base, overrides.advisories);
+}
 
-      /** Notices staff have taken off the public site, for the archive list. */
-      export function archivedAdvisories(
-        base: Advisory[],
-        overrides: ContentOverrides,
-      ): Advisory[] {
-        return archivedFromCollection(base, overrides.advisories);
-      }
+/** Notices staff have taken off the public site, for the archive list. */
+export function archivedAdvisories(
+  base: Advisory[],
+  overrides: ContentOverrides,
+): Advisory[] {
+  return archivedFromCollection(base, overrides.advisories);
+}
 
-      /** Published wildlife species with staff additions and edits merged over base rows. */
-      export function mergeSpecies(
-        base: Species[],
-        overrides: ContentOverrides,
-      ): Species[] {
-        return mergeCollection(base, overrides.species);
-      }
+/** Published wildlife species with staff additions and edits merged over base rows. */
+export function mergeSpecies(
+  base: Species[],
+  overrides: ContentOverrides,
+): Species[] {
+  return mergeCollection(base, overrides.species);
+}
 
-      /** Wildlife species archived by staff from the public catalogue. */
-      export function archivedSpecies(
-        base: Species[],
-        overrides: ContentOverrides,
-      ): Species[] {
-        return archivedFromCollection(base, overrides.species);
-      }
+/** Wildlife species archived by staff from the public catalogue. */
+export function archivedSpecies(
+  base: Species[],
+  overrides: ContentOverrides,
+): Species[] {
+  return archivedFromCollection(base, overrides.species);
+}
 
-      /** Park rules shown on `/guidelines`, using staff overrides when saved. */
-      export function mergeParkRules(
-        base: ParkRule[],
-        overrides: ContentOverrides,
-      ): ParkRule[] {
-        return overrides.guidelines.rules ?? base;
-      }
+/** Park rules shown on `/guidelines`, using staff overrides when saved. */
+export function mergeParkRules(
+  base: ParkRule[],
+  overrides: ContentOverrides,
+): ParkRule[] {
+  return overrides.guidelines.rules ?? base;
+}
 
-      /** Lake zoning cards shown on `/guidelines`, using staff overrides when saved. */
-      export function mergeLakeZones(
-        base: Zone[],
-        overrides: ContentOverrides,
-      ): Zone[] {
-        return overrides.guidelines.zones ?? base;
-      }
+/** Lake zoning cards shown on `/guidelines`, using staff overrides when saved. */
+export function mergeLakeZones(
+  base: Zone[],
+  overrides: ContentOverrides,
+): Zone[] {
+  return overrides.guidelines.zones ?? base;
+}
 
-      /** Staff-created plus base packages with edits applied, including unpublished ones. */
-      export function applyTourEdits(
-        base: Tour[],
-        overrides: ContentOverrides,
-      ): Tour[] {
-        const seen = new Set<string>();
-        const merged: Tour[] = [];
+/** Staff-created plus base packages with edits applied, including unpublished ones. */
+export function applyTourEdits(
+  base: Tour[],
+  overrides: ContentOverrides,
+): Tour[] {
+  const seen = new Set<string>();
+  const merged: Tour[] = [];
 
-        for (const created of overrides.tours.created) {
-          seen.add(created.slug);
-          merged.push(applyPatch(created, overrides.tours.edited[created.slug]));
-        }
+  for (const created of overrides.tours.created) {
+    seen.add(created.slug);
+    merged.push(applyPatch(created, overrides.tours.edited[created.slug]));
+  }
 
-        for (const tour of base) {
-          if (seen.has(tour.slug)) continue;
-          merged.push(applyPatch(tour, overrides.tours.edited[tour.slug]));
-        }
+  for (const tour of base) {
+    if (seen.has(tour.slug)) continue;
+    merged.push(applyPatch(tour, overrides.tours.edited[tour.slug]));
+  }
 
-        return merged;
-      }
+  return merged;
+}
 
-      /** Packages on sale: base rows minus unpublished, with staff edits applied. */
-      export function mergeTours(base: Tour[], overrides: ContentOverrides): Tour[] {
-        const unpublished = new Set(overrides.tours.unpublished);
+/** Packages on sale: base rows minus unpublished, with staff edits applied. */
+export function mergeTours(base: Tour[], overrides: ContentOverrides): Tour[] {
+  const unpublished = new Set(overrides.tours.unpublished);
 
-        return applyTourEdits(base, overrides).filter(
-          (tour) => !unpublished.has(tour.slug),
-        );
-      }
+  return applyTourEdits(base, overrides).filter(
+    (tour) => !unpublished.has(tour.slug),
+  );
+}
