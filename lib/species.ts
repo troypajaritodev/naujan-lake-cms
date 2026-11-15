@@ -9,6 +9,11 @@
  */
 
 import { cacheLife, cacheTag } from "next/cache";
+import {
+  archivedSpecies,
+  mergeSpecies,
+  readOverrides,
+} from "@/lib/content-store";
 import { getSupabaseClient, type Tables } from "@/lib/supabase";
 import { fetchOrFallback, queryError } from "@/lib/supabase/query";
 import { photoFor } from "@/lib/species-photos";
@@ -344,7 +349,33 @@ function toSpecies(
  * credit is used whether the row came from Supabase or the offline seeds.
  */
 function withPhoto(entry: Species): Species {
-  return { ...entry, photo: photoFor(entry.slug) };
+  return { ...entry, photo: entry.photo ?? photoFor(entry.slug) };
+}
+
+async function readBaseSpecies(): Promise<Species[]> {
+  const client = getSupabaseClient();
+  if (!client) return seedSpecies.map(withPhoto);
+
+  return fetchOrFallback(
+    "species",
+    async () => {
+      const groups = await getWildlifeGroups();
+      const groupSlugById = new Map(
+        groups.map((group) => [group.id, group.slug]),
+      );
+
+      const { data, error } = await client
+        .from("species")
+        .select("*")
+        .order("common_name", { ascending: true });
+
+      if (error) throw queryError("species", error.message);
+      return data && data.length > 0
+        ? data.map((row) => toSpecies(row, groupSlugById))
+        : seedSpecies.map(withPhoto);
+    },
+    () => seedSpecies.map(withPhoto),
+  );
 }
 
 /** Taxonomy groups, ordered for display. */
@@ -371,35 +402,30 @@ export async function getWildlifeGroups(): Promise<WildlifeGroup[]> {
   );
 }
 
-/** Every catalogued species, across all groups. */
+/** Every catalogued species, across all groups, merged with staff overrides. */
 export async function getSpecies(): Promise<Species[]> {
   "use cache";
   cacheLife("hours");
   cacheTag("species");
 
-  const client = getSupabaseClient();
-  if (!client) return seedSpecies.map(withPhoto);
+  const [base, overrides] = await Promise.all([
+    readBaseSpecies(),
+    readOverrides(),
+  ]);
+  return mergeSpecies(base, overrides).map(withPhoto);
+}
 
-  return fetchOrFallback(
-    "species",
-    async () => {
-      const groups = await getWildlifeGroups();
-      const groupSlugById = new Map(
-        groups.map((group) => [group.id, group.slug]),
-      );
+    /** Species taken off the public catalogue, listed for staff to restore. */
+    export async function getArchivedSpecies(): Promise<Species[]> {
+      "use cache";
+      cacheLife("hours");
+      cacheTag("species");
 
-      const { data, error } = await client
-        .from("species")
-        .select("*")
-        .order("common_name", { ascending: true });
-
-      if (error) throw queryError("species", error.message);
-      return data && data.length > 0
-        ? data.map((row) => toSpecies(row, groupSlugById))
-        : seedSpecies.map(withPhoto);
-    },
-    () => seedSpecies.map(withPhoto),
-  );
+const [base, overrides] = await Promise.all([
+  readBaseSpecies(),
+  readOverrides(),
+]);
+return archivedSpecies(base, overrides).map(withPhoto);
 }
 
 /** Species grouped in taxonomy order, ready for section rendering. */

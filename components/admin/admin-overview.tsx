@@ -12,6 +12,7 @@ import { useState } from "react";
 import Link from "next/link";
 import {
   ArrowRight,
+  Bird,
   CalendarClock,
   CheckCircle2,
   Inbox,
@@ -19,6 +20,7 @@ import {
   Mail,
   Megaphone,
   Route,
+  Scale,
   Users,
 } from "lucide-react";
 import StatCard from "@/components/admin/stat-card";
@@ -77,6 +79,8 @@ type OverviewProps = {
     pinnedTitle: string | null;
   };
   packages: { total: number; onSale: number; averageRate: number };
+  wildlife: { published: number; groups: number };
+  guidelines: { rules: number; zones: number };
 };
 
 const peso = new Intl.NumberFormat("en-PH", {
@@ -89,6 +93,8 @@ export default function AdminOverview({
   today,
   notices,
   packages,
+  wildlife,
+  guidelines,
 }: OverviewProps) {
   const inquiries = useInquiries();
   const accounts = summariseUsers(useUsers());
@@ -180,6 +186,22 @@ export default function AdminOverview({
       value: packages.onSale,
       unit: "on sale",
       icon: Route,
+    },
+    {
+      href: "/admin/species",
+      label: "Wildlife",
+      hint: `${wildlife.groups} taxonomic groups`,
+      value: wildlife.published,
+      unit: "species",
+      icon: Bird,
+    },
+    {
+      href: "/admin/rules",
+      label: "Rules & Zones",
+      hint: `${guidelines.zones} lake zones enforced`,
+      value: guidelines.rules,
+      unit: "rules",
+      icon: Scale,
     },
   ];
 

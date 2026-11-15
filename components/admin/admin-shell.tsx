@@ -6,6 +6,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import {
   ArrowRight,
   ArrowUpRight,
+  Bird,
   Inbox,
   LayoutDashboard,
   Loader2,
@@ -14,6 +15,7 @@ import {
   Megaphone,
   Menu,
   Route,
+  Scale,
   ShieldCheck,
   Users,
   X,
@@ -58,6 +60,18 @@ const navigation = [
     label: "Packages",
     hint: "Rates, seats and availability",
     icon: Route,
+  },
+  {
+    href: "/admin/species",
+    label: "Wildlife",
+    hint: "Species catalogue & status",
+    icon: Bird,
+  },
+  {
+    href: "/admin/rules",
+    label: "Rules & Zones",
+    hint: "Park rules & lake zoning",
+    icon: Scale,
   },
 ];
 
