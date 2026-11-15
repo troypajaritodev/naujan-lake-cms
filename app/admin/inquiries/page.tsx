@@ -851,29 +851,73 @@ export default function AdminInquiriesPage() {
                       )}
                     </td>
                     <td className="px-5 py-3.5">
-                      <p className="text-[13px] font-medium text-ink">
-                        {inquiry.fullName}
-                      </p>
-                      <p className="text-[11.5px] text-ink-soft/60">
-                        {inquiry.email}
-                      </p>
+                      <div className="flex items-center gap-3">
+                        <span
+                          aria-hidden="true"
+                          className="grid size-8 shrink-0 place-items-center rounded-full bg-lake-100 font-mono text-[10.5px] font-semibold text-lake-800"
+                        >
+                          {inquiry.fullName
+                            .split(" ")
+                            .filter(Boolean)
+                            .slice(0, 2)
+                            .map((p) => p[0]?.toUpperCase() ?? "")
+                            .join("")}
+                        </span>
+                        <div className="min-w-0">
+                          <p className="truncate text-[13px] font-medium text-ink">
+                            {inquiry.fullName}
+                          </p>
+                          <p className="truncate text-[11.5px] text-ink-soft/60">
+                            {inquiry.email}
+                          </p>
+                        </div>
+                      </div>
                     </td>
                     <td className="px-5 py-3.5">
                       <p className="text-[12.5px] font-medium text-ink">
                         {inquiry.tourTitle}
                       </p>
-                      <p className="text-[11.5px] text-ink-soft/65">
-                        {formatDay(inquiry.preferredDate)} · {inquiry.partySize}{" "}
-                        {inquiry.partySize === 1 ? "guest" : "guests"}
-                      </p>
+                      <div className="mt-0.5 flex flex-wrap items-center gap-2 text-[11.5px] text-ink-soft/65">
+                        <span>
+                          {formatDay(inquiry.preferredDate)} · {inquiry.partySize}{" "}
+                          {inquiry.partySize === 1 ? "guest" : "guests"}
+                        </span>
+                        {inquiry.messages && inquiry.messages.length > 0 && (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-lake-50 px-2 py-0.5 text-[10px] font-semibold text-lake-800 ring-1 ring-lake-600/20">
+                            <MessageSquareText className="size-2.5" />
+                            {inquiry.messages.length}
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td className="px-5 py-3.5">
-                      <p className="font-mono text-[12.5px] font-semibold text-ink">
+                      <p className="font-mono text-[12.5px] font-semibold text-ink tabular-nums">
                         {peso.format(inquiry.firstPaymentAmount ?? 0)}
                         <span className="ml-1.5 font-sans text-[11px] font-normal text-sand-600">
                           / {peso.format(inquiry.totalAmount ?? 0)}
                         </span>
                       </p>
+                      <div className="mt-1.5 h-1 w-28 overflow-hidden rounded-full bg-sand-200">
+                        <div
+                          className={`h-full rounded-full ${
+                            pStatus === "VERIFIED" ? "bg-moss-600" : "bg-lake-600"
+                          }`}
+                          style={{
+                            width: `${
+                              (inquiry.totalAmount ?? 0) > 0
+                                ? Math.min(
+                                    100,
+                                    Math.round(
+                                      ((inquiry.firstPaymentAmount ?? 0) /
+                                        (inquiry.totalAmount ?? 1)) *
+                                        100,
+                                    ),
+                                  )
+                                : 0
+                            }%`,
+                          }}
+                        />
+                      </div>
                       <div className="mt-1 flex flex-wrap items-center gap-1.5">
                         <span
                           className={`inline-flex rounded-full px-2 py-0.5 text-[9.5px] font-semibold uppercase ring-1 ring-inset ${pMeta.chip}`}

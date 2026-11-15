@@ -153,8 +153,8 @@ export default function SiteHeader() {
       >
         <Link href="/" className="flex items-center gap-3">
           <BrandMark
-            className={`size-10 transition-colors duration-500 ${
-              overHero ? "bg-white/10 backdrop-blur-md" : ""
+            className={`size-11 transition-all duration-500 ${
+              overHero ? "ring-white/30" : "ring-ink/12"
             }`}
           />
           <span className="flex flex-col leading-none">

@@ -67,7 +67,7 @@ export function AuthShell({
 
             <div className="relative">
               <div className="flex items-center gap-3">
-                <BrandMark className="size-10 bg-white/10 backdrop-blur-md" />
+                <BrandMark className="size-11 ring-white/25" />
                 <span className="text-[10px] font-medium tracking-[0.26em] text-sand-300/80 uppercase">
                   Visitor account
                 </span>

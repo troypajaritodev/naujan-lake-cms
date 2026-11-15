@@ -216,6 +216,73 @@ export default function AdminOverview({
         />
       </div>
 
+      {/* Live Operations Pipeline Summary Strip */}
+      <div className="surface-card rounded-2xl p-5 ring-1 ring-ink/8">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="text-[10px] font-semibold tracking-[0.16em] text-sand-600 uppercase">
+              Booking Pipeline Health
+            </p>
+            <p className="mt-0.5 text-[13px] text-ink-soft/80">
+              End-to-end traveler flow across Pending, On Process, and Confirmed trips
+            </p>
+          </div>
+          <Link
+            href="/admin/inquiries"
+            className="inline-flex items-center gap-1.5 rounded-full bg-lake-50 px-3.5 py-1.5 text-[12px] font-semibold text-lake-800 ring-1 ring-lake-600/20 hover:bg-lake-100"
+          >
+            Manage all bookings
+            <ArrowRight className="size-3.5" />
+          </Link>
+        </div>
+
+        <div className="mt-4 grid gap-3 sm:grid-cols-4">
+          {(
+            [
+              {
+                label: "Pending review",
+                count: pending.length,
+                dot: "bg-reed-400",
+                tone: "bg-reed-50/70 ring-reed-600/20",
+              },
+              {
+                label: "Accepted · On Process",
+                count: onProcessCount,
+                dot: "bg-lake-600",
+                tone: "bg-lake-50/70 ring-lake-600/20",
+              },
+              {
+                label: "Confirmed ready",
+                count: inquiries.filter((i) => i.status === "CONFIRMED").length,
+                dot: "bg-moss-600",
+                tone: "bg-moss-50/70 ring-moss-600/20",
+              },
+              {
+                label: "Completed trips",
+                count: inquiries.filter((i) => i.status === "COMPLETED").length,
+                dot: "bg-moss-800",
+                tone: "bg-sand-100/80 ring-ink/10",
+              },
+            ] as const
+          ).map((stage) => (
+            <div
+              key={stage.label}
+              className={`rounded-xl px-4 py-3 ring-1 ${stage.tone}`}
+            >
+              <div className="flex items-center justify-between gap-2">
+                <span className="flex items-center gap-2 text-[11.5px] font-semibold text-ink">
+                  <span className={`size-2 rounded-full ${stage.dot}`} />
+                  {stage.label}
+                </span>
+                <span className="font-display text-[22px] font-light text-ink tabular-nums">
+                  {stage.count}
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
       <div className="grid items-start gap-6 xl:grid-cols-[1.55fr_1fr]">
         <section
           aria-labelledby="attention-heading"

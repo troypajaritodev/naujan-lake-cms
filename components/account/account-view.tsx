@@ -14,13 +14,16 @@ import {
   ChevronDown,
   ChevronUp,
   Clock3,
+  Compass,
   Copy,
   CreditCard,
   History,
   LayoutDashboard,
   Loader2,
   LogOut,
+  MapPin,
   MessageSquareText,
+  Phone,
   Printer,
   Receipt,
   Search,
@@ -32,6 +35,7 @@ import {
   X,
 } from "lucide-react";
 import { AuthField } from "@/components/auth-shell";
+import BrandMark from "@/components/brand-mark";
 import { useAuth } from "@/components/auth-provider";
 import { AuthError, type SessionUser } from "@/lib/auth";
 import {
@@ -583,68 +587,154 @@ function AccountDashboard({ user }: { user: SessionUser }) {
         </div>
 
         {/* Section Tabs */}
-        <div
-          role="tablist"
-          aria-label="Account sections"
-          className="mt-8 flex flex-wrap gap-2 border-b border-ink/10 pb-3"
-        >
-          {(
-            [
-              {
-                id: "bookings" as const,
-                label: "Bookings & Tracker",
-                icon: Ticket,
-                badge: stats.activeCount > 0 ? stats.activeCount : undefined,
-              },
-              {
-                id: "payments" as const,
-                label: "Payment Ledger",
-                icon: CreditCard,
-                badge: undefined,
-              },
-              {
-                id: "profile" as const,
-                label: "Profile & Security",
-                icon: UserRound,
-                badge: undefined,
-              },
-            ] as const
-          ).map((item) => {
-            const active = tab === item.id;
-            return (
-              <button
-                key={item.id}
-                type="button"
-                role="tab"
-                aria-selected={active}
-                onClick={() => setTab(item.id)}
-                className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-[13px] font-semibold transition-colors ${active
-                  ? "bg-lake-900 text-sand-50"
-                  : "bg-white text-ink-soft ring-1 ring-ink/10 hover:bg-sand-100 hover:text-ink"
+        <div className="mt-8 flex flex-wrap items-center justify-between gap-4">
+          <div
+            role="tablist"
+            aria-label="Account sections"
+            className="inline-flex flex-wrap gap-1.5 rounded-2xl bg-sand-200/75 p-1.5 ring-1 ring-ink/8"
+          >
+            {(
+              [
+                {
+                  id: "bookings" as const,
+                  label: "Bookings & Tracker",
+                  icon: Ticket,
+                  badge: stats.activeCount > 0 ? stats.activeCount : undefined,
+                },
+                {
+                  id: "payments" as const,
+                  label: "Payment Ledger",
+                  icon: CreditCard,
+                  badge: undefined,
+                },
+                {
+                  id: "profile" as const,
+                  label: "Profile & Security",
+                  icon: UserRound,
+                  badge: undefined,
+                },
+              ] as const
+            ).map((item) => {
+              const active = tab === item.id;
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={active}
+                  onClick={() => setTab(item.id)}
+                  className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-[13px] font-semibold transition-all ${
+                    active
+                      ? "bg-white text-ink shadow-[0_6px_18px_-8px_rgba(12,26,23,0.35)] ring-1 ring-ink/8"
+                      : "text-ink-soft/80 hover:bg-white/60 hover:text-ink"
                   }`}
-              >
-                <item.icon className="size-3.5" strokeWidth={2} />
-                {item.label}
-                {item.badge !== undefined && (
-                  <span
-                    className={`rounded-full px-1.5 py-0.5 font-mono text-[10px] ${active
-                      ? "bg-white/15 text-sand-50"
-                      : "bg-lake-50 text-lake-800"
+                >
+                  <item.icon
+                    className={`size-3.5 ${active ? "text-lake-700" : "text-sand-600"}`}
+                    strokeWidth={2}
+                  />
+                  {item.label}
+                  {item.badge !== undefined && (
+                    <span
+                      className={`rounded-full px-1.5 py-0.5 font-mono text-[10px] ${
+                        active
+                          ? "bg-lake-800 text-sand-50"
+                          : "bg-white/80 text-lake-800"
                       }`}
-                  >
-                    {item.badge}
-                  </span>
-                )}
-              </button>
-            );
-          })}
+                    >
+                      {item.badge}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
         </div>
 
         {/* Tab 1: Bookings & Live Tracker */}
-        {tab === "bookings" && (
-          <div className="mt-6 space-y-5">
-            {/* Filters & Search */}
-            <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-white p-4 ring-1 ring-ink/8">
+        {tab === "bookings" && (() => {
+          const spotlight =
+            inquiries.find((b) => b.status === "CONFIRMED") ??
+            inquiries.find((b) => b.status === "ON_PROCESS") ??
+            inquiries.find((b) => b.status === "PENDING") ??
+            null;
+          const totalTripValue = inquiries
+            .filter((b) => b.status !== "CANCELLED" && b.status !== "DECLINED")
+            .reduce((sum, b) => sum + (b.totalAmount ?? 0), 0);
+          const paidRatio =
+            totalTripValue > 0
+              ? Math.min(100, Math.round((stats.totalFirstPaid / totalTripValue) * 100))
+              : 0;
+
+          return (
+            <div className="mt-6 space-y-6">
+              {/* Featured Next Active Trip Spotlight */}
+              {spotlight && (
+                <div className="grain-overlay relative overflow-hidden rounded-3xl bg-gradient-to-br from-lake-950 via-lake-900 to-[#0d2e2c] p-6 text-sand-50 shadow-[0_24px_60px_-28px_rgba(8,33,31,0.7)] ring-1 ring-white/15 sm:p-7">
+                  <div
+                    aria-hidden="true"
+                    className="pointer-events-none absolute -top-20 right-0 size-72 rounded-full bg-reed-400/10 blur-3xl"
+                  />
+                  <div className="relative flex flex-wrap items-start justify-between gap-5">
+                    <div className="space-y-2">
+                      <div className="flex flex-wrap items-center gap-2.5">
+                        <span className="inline-flex items-center gap-2 rounded-full bg-white/12 px-3 py-1 text-[10.5px] font-semibold tracking-[0.16em] text-reed-200 uppercase ring-1 ring-white/15 backdrop-blur-sm">
+                          <span className="relative flex size-2">
+                            <span className="absolute inline-flex size-full animate-ping rounded-full bg-reed-300 opacity-75" />
+                            <span className="relative inline-flex size-2 rounded-full bg-reed-300" />
+                          </span>
+                          Active Trip Spotlight · {INQUIRY_STATUS_META[spotlight.status].label}
+                        </span>
+                        <span className="font-mono text-[12px] text-sand-300/85">
+                          {spotlight.reference}
+                        </span>
+                      </div>
+                      <h2 className="font-display text-[25px] leading-tight font-light text-sand-50 sm:text-[28px]">
+                        {spotlight.tourTitle}
+                      </h2>
+                      <p className="text-[13px] text-sand-200/80">
+                        {formatDate(`${spotlight.preferredDate}T00:00:00`)} ·{" "}
+                        {spotlight.partySize}{" "}
+                        {spotlight.partySize === 1 ? "guest" : "guests"} ·{" "}
+                        <span className="text-reed-200 font-medium">
+                          {statusSummary(spotlight)}
+                        </span>
+                      </p>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-2.5">
+                      {(spotlight.status === "ON_PROCESS" ||
+                        spotlight.status === "CONFIRMED") && (
+                        <button
+                          type="button"
+                          onClick={() => setPassModal(spotlight)}
+                          className="inline-flex items-center gap-2 rounded-full bg-sand-50 px-4 py-2 text-[12.5px] font-semibold text-ink shadow-md transition-colors hover:bg-white"
+                        >
+                          <Ticket className="size-3.5 text-lake-800" />
+                          Open entry pass
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setMessageError(null);
+                          setOpenChatId(spotlight.id);
+                          setFilter("ALL");
+                        }}
+                        className="inline-flex items-center gap-2 rounded-full border border-white/25 bg-white/10 px-4 py-2 text-[12.5px] font-semibold text-sand-50 backdrop-blur-sm transition-colors hover:bg-white/20"
+                      >
+                        <MessageSquareText className="size-3.5" />
+                        Message Park Desk
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <div className="grid items-start gap-6 lg:grid-cols-[1fr_310px]">
+                <div className="space-y-5 min-w-0">
+                  {/* Filters & Search */}
+                  <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-white p-4 ring-1 ring-ink/8">
               <div
                 role="group"
                 aria-label="Filter bookings by status"
@@ -1348,8 +1438,72 @@ function AccountDashboard({ user }: { user: SessionUser }) {
                 })}
               </div>
             )}
-          </div>
-        )}
+                </div>
+
+                {/* Sticky Park & Financial Companion Rail */}
+                <aside className="space-y-4 lg:sticky lg:top-24">
+                  <div className="surface-card rounded-2xl p-5 ring-1 ring-ink/8">
+                    <p className="flex items-center gap-2 text-[10px] font-semibold tracking-[0.16em] text-sand-600 uppercase">
+                      <CreditCard className="size-3.5 text-lake-700" />
+                      Deposit coverage meter
+                    </p>
+                    <div className="mt-3 flex items-baseline justify-between gap-2">
+                      <p className="font-display text-[26px] font-light text-ink tabular-nums">
+                        {peso.format(stats.totalFirstPaid)}
+                      </p>
+                      <span className="rounded-full bg-moss-50 px-2 py-0.5 font-mono text-[10.5px] font-semibold text-moss-700 ring-1 ring-moss-600/20">
+                        {paidRatio}% settled
+                      </span>
+                    </div>
+                    <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-sand-200">
+                      <div
+                        className="h-full rounded-full bg-gradient-to-r from-lake-700 to-moss-600 transition-all duration-500"
+                        style={{ width: `${paidRatio}%` }}
+                      />
+                    </div>
+                    <div className="mt-3 flex justify-between text-[11.5px] text-ink-soft/75">
+                      <span>Jetty balance</span>
+                      <span className="font-mono font-semibold text-ink">
+                        {peso.format(stats.remainingBalances)}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="surface-card rounded-2xl p-5 ring-1 ring-ink/8 space-y-3">
+                    <p className="flex items-center gap-2 text-[10px] font-semibold tracking-[0.16em] text-sand-600 uppercase">
+                      <Compass className="size-3.5 text-lake-700" />
+                      Park dispatch desk
+                    </p>
+                    <div className="space-y-2 text-[12.5px] text-ink-soft/85">
+                      <p className="flex items-start gap-2">
+                        <MapPin className="mt-0.5 size-3.5 shrink-0 text-lake-700" />
+                        <span>Brgy. Bambanin Jetty, Naujan, Oriental Mindoro</span>
+                      </p>
+                      <p className="flex items-center gap-2">
+                        <Phone className="size-3.5 shrink-0 text-lake-700" />
+                        <span className="font-mono">+63 917 555 0142</span>
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap gap-2 pt-2 border-t border-ink/8">
+                      <Link
+                        href="/advisories"
+                        className="rounded-full bg-sand-100 px-3 py-1.5 text-[11.5px] font-semibold text-ink hover:bg-sand-200"
+                      >
+                        Lake advisories
+                      </Link>
+                      <Link
+                        href="/guidelines"
+                        className="rounded-full bg-sand-100 px-3 py-1.5 text-[11.5px] font-semibold text-ink hover:bg-sand-200"
+                      >
+                        Visitor rules
+                      </Link>
+                    </div>
+                  </div>
+                </aside>
+              </div>
+            </div>
+          );
+        })()}
 
         {/* Tab 2: Payment Ledger */}
         {tab === "payments" && (
@@ -1727,13 +1881,16 @@ function AccountDashboard({ user }: { user: SessionUser }) {
         >
           <div className="w-full max-w-lg overflow-hidden rounded-2xl bg-white shadow-2xl ring-1 ring-ink/10">
             <div className="flex items-center justify-between border-b border-ink/8 bg-lake-950 px-6 py-4 text-sand-50">
-              <div>
-                <p className="text-[10px] font-semibold tracking-[0.2em] text-sand-300 uppercase">
-                  Naujan Lake National Park · Entry Pass
-                </p>
-                <p className="mt-0.5 font-mono text-[14px] font-semibold">
-                  {passModal.reference}
-                </p>
+              <div className="flex items-center gap-3.5">
+                <BrandMark className="size-11 ring-white/25" />
+                <div>
+                  <p className="text-[10px] font-semibold tracking-[0.2em] text-sand-300 uppercase">
+                    Naujan Lake National Park · Entry Pass
+                  </p>
+                  <p className="mt-0.5 font-mono text-[14px] font-semibold">
+                    {passModal.reference}
+                  </p>
+                </div>
               </div>
               <button
                 type="button"

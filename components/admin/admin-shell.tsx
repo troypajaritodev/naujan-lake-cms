@@ -219,7 +219,7 @@ export default function AdminShell({ children }: { children: ReactNode }) {
           className="pointer-events-none absolute inset-0 bg-[radial-gradient(120%_45%_at_15%_0%,rgba(51,135,133,0.22),transparent_70%)]"
         />
         <Link href="/" className="relative flex items-center gap-3">
-          <BrandMark className="size-9 bg-white/10" />
+          <BrandMark className="size-10 ring-white/25" />
           <span className="flex flex-col leading-none">
             <span className="font-display text-[17px] text-sand-50">
               Naujan Lake
@@ -321,7 +321,7 @@ export default function AdminShell({ children }: { children: ReactNode }) {
                 onClick={() => setNavOpen(false)}
                 className="flex items-center gap-3"
               >
-                <BrandMark className="size-9 bg-white/10" />
+                <BrandMark className="size-10 ring-white/25" />
                 <span className="flex flex-col leading-none">
                   <span className="font-display text-[17px] text-sand-50">
                     Naujan Lake
