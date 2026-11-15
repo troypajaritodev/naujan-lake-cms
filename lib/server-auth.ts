@@ -265,20 +265,36 @@ export async function authenticateUser(
       );
     }
 
-    // Prefer live Supabase Auth verification when configured.
+    if (existing) {
+      const check = verifyStoredPassword(email, password, existing.passwordHash);
+      if (!check.valid) {
+        throw new ServerAuthError("That password is not correct.", 401, "password");
+      }
+
+      const signedIn: StoredUser = {
+        ...existing,
+        lastLoginAt: new Date().toISOString(),
+        passwordHash: check.needsUpgrade
+          ? hashPasswordScrypt(password)
+          : existing.passwordHash,
+      };
+
+      const next = [...users];
+      next[existingIndex] = signedIn;
+      return { next, result: toSessionUser(signedIn) };
+    }
+
+    // Account not yet cached locally — verify via live Supabase Auth when configured.
     const sb = createStatelessSupabaseClient();
     if (sb) {
       const { data, error } = await sb.auth.signInWithPassword({ email, password });
       if (!error && data.user) {
-        let profileRole: Role = existing?.role ?? "visitor";
+        let profileRole: Role = "visitor";
         let profileName =
-          existing?.fullName ||
           cleanText(String(data.user.user_metadata?.full_name ?? ""), 120) ||
           email.split("@")[0];
-        let profilePhone =
-          existing?.phone ||
-          cleanPhone(String(data.user.user_metadata?.phone ?? ""));
-        let profileActive = existing?.isActive ?? true;
+        let profilePhone = cleanPhone(String(data.user.user_metadata?.phone ?? ""));
+        let profileActive = true;
 
         if (data.session?.access_token) {
           const authed = createStatelessSupabaseClient(data.session.access_token);
@@ -298,57 +314,30 @@ export async function authenticateUser(
                 "email",
               );
             }
-            profileRole = existing?.role ?? (row.role === "admin" ? "admin" : "visitor");
-            profileName = existing?.fullName || row.full_name || profileName;
-            profilePhone = existing?.phone || row.phone || profilePhone;
-            profileActive = existing?.isActive ?? row.is_active;
+            profileRole = row.role === "admin" ? "admin" : "visitor";
+            profileName = row.full_name || profileName;
+            profilePhone = row.phone || profilePhone;
+            profileActive = row.is_active;
           }
         }
 
         const synced: StoredUser = {
-          ...(existing ?? {
-            createdAt: data.user.created_at ?? new Date().toISOString(),
-          }),
-          id: existing?.id ?? data.user.id,
+          id: data.user.id,
           email,
           fullName: profileName,
           phone: profilePhone,
           role: profileRole,
           isActive: profileActive,
+          createdAt: data.user.created_at ?? new Date().toISOString(),
           lastLoginAt: new Date().toISOString(),
           passwordHash: hashPasswordScrypt(password),
         };
 
-        const next = [...users];
-        if (existingIndex >= 0) {
-          next[existingIndex] = synced;
-        } else {
-          next.push(synced);
-        }
-        return { next, result: toSessionUser(synced) };
+        return { next: [...users, synced], result: toSessionUser(synced) };
       }
     }
 
-    if (!existing) {
-      throw new ServerAuthError("No account matches that email.", 401, "email");
-    }
-
-    const check = verifyStoredPassword(email, password, existing.passwordHash);
-    if (!check.valid) {
-      throw new ServerAuthError("That password is not correct.", 401, "password");
-    }
-
-    const signedIn: StoredUser = {
-      ...existing,
-      lastLoginAt: new Date().toISOString(),
-      passwordHash: check.needsUpgrade
-        ? hashPasswordScrypt(password)
-        : existing.passwordHash,
-    };
-
-    const next = [...users];
-    next[existingIndex] = signedIn;
-    return { next, result: toSessionUser(signedIn) };
+    throw new ServerAuthError("No account matches that email.", 401, "email");
   });
 }
 

@@ -425,13 +425,13 @@ function AccountDashboard({ user }: { user: SessionUser }) {
     }
   }
 
-  function saveProfile(event: React.FormEvent<HTMLFormElement>) {
+  async function saveProfile(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setProfileError(null);
     setProfileStatus("idle");
 
     try {
-      updateProfile(profile);
+      await updateProfile(profile);
       setProfileStatus("saved");
       window.setTimeout(() => setProfileStatus("idle"), 2600);
     } catch (error) {

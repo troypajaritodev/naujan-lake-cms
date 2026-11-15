@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
   AlertCircle,
@@ -19,6 +19,7 @@ import { useAuth } from "@/components/auth-provider";
 import { downloadCsv } from "@/lib/csv";
 import {
   AuthError,
+  refreshUsersFromServer,
   setUserActive,
   summariseUsers,
   updateUserRole,
@@ -83,12 +84,18 @@ export default function AdminUsersPage() {
     text: string;
   } | null>(null);
 
-  function changeRole(user: SessionUser, role: Role) {
+  useEffect(() => {
+    refreshUsersFromServer().catch(() => {
+      // Fall back to cached summaries if offline.
+    });
+  }, []);
+
+  async function changeRole(user: SessionUser, role: Role) {
     if (user.role === role) return;
 
     setFeedback(null);
     try {
-      const updated = updateUserRole(user.id, role);
+      const updated = await updateUserRole(user.id, role);
       setFeedback({
         tone: "ok",
         text:
@@ -107,11 +114,11 @@ export default function AdminUsersPage() {
     }
   }
 
-  function toggleStatus(user: SessionUser) {
+  async function toggleStatus(user: SessionUser) {
     const nextActive = user.isActive === false;
     setFeedback(null);
     try {
-      const updated = setUserActive(user.id, nextActive);
+      const updated = await setUserActive(user.id, nextActive);
       setFeedback({
         tone: "ok",
         text: nextActive

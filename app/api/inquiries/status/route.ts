@@ -62,22 +62,6 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Too many requests." }, { status: 429 });
   }
 
-  let payload: Record<string, unknown>;
-  try {
-    payload = (await request.json()) as Record<string, unknown>;
-  } catch {
-    return NextResponse.json({ error: "Expected JSON." }, { status: 400 });
-  }
-
-  const inquiry = parseInquiryPayload(payload);
-  const status = payload.status;
-  if (!inquiry || !isNotifiableStatus(status)) {
-    return NextResponse.json(
-      { error: "Incomplete status update." },
-      { status: 400 },
-    );
-  }
-
   const session = await getServerSession();
   if (!session) {
     return NextResponse.json(
@@ -86,13 +70,30 @@ export async function POST(request: Request) {
     );
   }
 
+  let payload: Record<string, unknown>;
+  try {
+    payload = (await request.json()) as Record<string, unknown>;
+  } catch {
+    return NextResponse.json({ error: "Expected JSON." }, { status: 400 });
+  }
+
   const actor: InquiryActor = payload.actor === "visitor" ? "visitor" : "park";
+  const status = payload.status;
   if ((actor === "park" || status !== "CANCELLED") && session.role !== "admin") {
     return NextResponse.json(
       { error: "Only park staff can issue operational status notifications." },
       { status: 403 },
     );
   }
+
+  const inquiry = parseInquiryPayload(payload);
+  if (!inquiry || !isNotifiableStatus(status)) {
+    return NextResponse.json(
+      { error: "Incomplete status update." },
+      { status: 400 },
+    );
+  }
+
   if (
     actor === "visitor" &&
     session.role !== "admin" &&
