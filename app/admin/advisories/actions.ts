@@ -24,6 +24,7 @@ import {
 import { readOverrides, updateOverrides } from "@/lib/content-store";
 import { dispatchAdvisoryDigest } from "@/lib/notifications";
 import { cleanEmail, cleanText } from "@/lib/sanitize";
+import { requireAdminSession } from "@/lib/server-auth";
 
 export type ActionResult =
   | { ok: true; slug: string; message: string }
@@ -78,6 +79,10 @@ function toParagraphs(value: string): string[] {
 export async function saveAdvisoryAction(
   formData: FormData,
 ): Promise<ActionResult> {
+  if (!(await requireAdminSession())) {
+    return { ok: false, message: "Park staff access required." };
+  }
+
   const existingSlug = field(formData, "slug", 72);
   const title = field(formData, "title", 120);
   const excerpt = field(formData, "excerpt", 320);
@@ -223,6 +228,10 @@ export async function setAdvisoryArchivedAction(
   slug: string,
   archived: boolean,
 ): Promise<ActionResult> {
+  if (!(await requireAdminSession())) {
+    return { ok: false, message: "Park staff access required." };
+  }
+
   const cleanSlug = cleanText(slug, 72);
   if (!cleanSlug) {
     return { ok: false, message: "Missing notice." };
@@ -252,6 +261,8 @@ export async function setAdvisoryArchivedAction(
 
 /** Used by the panel to warn before overwriting someone else's edit. */
 export async function countAdvisoryOverridesAction(): Promise<number> {
+  if (!(await requireAdminSession())) return 0;
+
   const overrides = await readOverrides();
   return (
     overrides.advisories.created.length +

@@ -16,6 +16,7 @@
 import { updateTag } from "next/cache";
 import { readOverrides, updateOverrides } from "@/lib/content-store";
 import { cleanText, slugify, toCleanLines } from "@/lib/sanitize";
+import { requireAdminSession } from "@/lib/server-auth";
 import {
   getToursForAdmin,
   TOUR_IMAGE_OPTIONS,
@@ -86,6 +87,10 @@ function wholeNumber(value: string): number | null {
 export async function saveTourAction(
   formData: FormData,
 ): Promise<TourActionResult> {
+  if (!(await requireAdminSession())) {
+    return { ok: false, message: "Park staff access required." };
+  }
+
   const slug = field(formData, "slug", 72);
   const mode = field(formData, "mode", 16);
   const isCreate = mode === "create" || !slug;
@@ -272,6 +277,10 @@ export async function setTourPublishedAction(
   slug: string,
   published: boolean,
 ): Promise<TourActionResult> {
+  if (!(await requireAdminSession())) {
+    return { ok: false, message: "Park staff access required." };
+  }
+
   const cleanSlug = cleanText(slug, 72);
   if (!cleanSlug) {
     return { ok: false, message: "Missing package." };
@@ -307,6 +316,8 @@ export async function setTourPublishedAction(
 
 /** Used by the screen to show how many packages carry staff edits. */
 export async function countTourOverridesAction(): Promise<number> {
+  if (!(await requireAdminSession())) return 0;
+
   const overrides = await readOverrides();
   return (
     overrides.tours.created.length +

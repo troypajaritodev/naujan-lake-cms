@@ -9,6 +9,7 @@ import {
   type Zone,
 } from "@/lib/guidelines";
 import { cleanText, toCleanLines } from "@/lib/sanitize";
+import { requireAdminSession } from "@/lib/server-auth";
 
 export type RulesActionResult =
   | { ok: true; message: string }
@@ -30,6 +31,10 @@ function field(formData: FormData, name: string, maxLength: number): string {
 export async function saveParkRuleAction(
   formData: FormData,
 ): Promise<RulesActionResult> {
+  if (!(await requireAdminSession())) {
+    return { ok: false, message: "Park staff access required." };
+  }
+
   const indexRaw = field(formData, "index", 8);
   const parsedIndex = indexRaw === "" ? -1 : Number(indexRaw);
   const icon = field(formData, "icon", 24) as ParkRule["icon"];
@@ -96,6 +101,10 @@ export async function saveParkRuleAction(
 export async function deleteParkRuleAction(
   index: number,
 ): Promise<RulesActionResult> {
+  if (!(await requireAdminSession())) {
+    return { ok: false, message: "Park staff access required." };
+  }
+
   let blocked = false;
   let removedTitle = "";
 
@@ -137,6 +146,10 @@ export async function moveParkRuleAction(
   index: number,
   direction: "up" | "down",
 ): Promise<RulesActionResult> {
+  if (!(await requireAdminSession())) {
+    return { ok: false, message: "Park staff access required." };
+  }
+
   const delta = direction === "up" ? -1 : 1;
 
   await updateOverrides((current) => {
@@ -168,6 +181,10 @@ export async function moveParkRuleAction(
 export async function saveLakeZoneAction(
   formData: FormData,
 ): Promise<RulesActionResult> {
+  if (!(await requireAdminSession())) {
+    return { ok: false, message: "Park staff access required." };
+  }
+
   const zoneId = field(formData, "id", 40);
   const name = field(formData, "name", 90);
   const access = field(formData, "access", 60);
@@ -263,6 +280,10 @@ export async function saveLakeZoneAction(
 export async function resetGuidelinesAction(
   scope: "rules" | "zones",
 ): Promise<RulesActionResult> {
+  if (!(await requireAdminSession())) {
+    return { ok: false, message: "Park staff access required." };
+  }
+
   await updateOverrides((current) => ({
     ...current,
     guidelines: {

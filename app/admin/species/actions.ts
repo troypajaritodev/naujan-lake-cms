@@ -3,6 +3,7 @@
 import { updateTag } from "next/cache";
 import { readOverrides, updateOverrides } from "@/lib/content-store";
 import { cleanText, slugify } from "@/lib/sanitize";
+import { requireAdminSession } from "@/lib/server-auth";
 import { getSpecies, getArchivedSpecies, getWildlifeGroups } from "@/lib/species";
 import {
   conservationStatuses,
@@ -49,6 +50,10 @@ function resolvePhoto(
 export async function saveSpeciesAction(
   formData: FormData,
 ): Promise<SpeciesActionResult> {
+  if (!(await requireAdminSession())) {
+    return { ok: false, message: "Park staff access required." };
+  }
+
   const existingSlug = field(formData, "slug", 72);
   const commonName = field(formData, "commonName", 120);
   const localName = field(formData, "localName", 120);
@@ -192,6 +197,10 @@ export async function setSpeciesArchivedAction(
   slug: string,
   archived: boolean,
 ): Promise<SpeciesActionResult> {
+  if (!(await requireAdminSession())) {
+    return { ok: false, message: "Park staff access required." };
+  }
+
   const cleanSlug = cleanText(slug, 72);
   if (!cleanSlug) {
     return { ok: false, message: "Missing species identifier." };
@@ -220,6 +229,8 @@ export async function setSpeciesArchivedAction(
 }
 
 export async function countSpeciesOverridesAction(): Promise<number> {
+  if (!(await requireAdminSession())) return 0;
+
   const overrides = await readOverrides();
   return (
     overrides.species.created.length +

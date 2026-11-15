@@ -10,6 +10,7 @@ import {
 } from "@/lib/email-templates";
 import type { InquiryActor, InquiryStatus } from "@/lib/inquiries";
 import { parseInquiryPayload } from "@/lib/inquiry-payload";
+import { getServerSession } from "@/lib/server-auth";
 
 /**
  * Emails the visitor (or the park, for a withdrawal) when a request changes
@@ -77,7 +78,31 @@ export async function POST(request: Request) {
     );
   }
 
+  const session = await getServerSession();
+  if (!session) {
+    return NextResponse.json(
+      { error: "Sign in to update booking status." },
+      { status: 401 },
+    );
+  }
+
   const actor: InquiryActor = payload.actor === "visitor" ? "visitor" : "park";
+  if ((actor === "park" || status !== "CANCELLED") && session.role !== "admin") {
+    return NextResponse.json(
+      { error: "Only park staff can issue operational status notifications." },
+      { status: 403 },
+    );
+  }
+  if (
+    actor === "visitor" &&
+    session.role !== "admin" &&
+    session.email.toLowerCase() !== inquiry.userEmail.toLowerCase()
+  ) {
+    return NextResponse.json(
+      { error: "You can only withdraw your own booking requests." },
+      { status: 403 },
+    );
+  }
 
   let message;
   if (status === "ON_PROCESS") {

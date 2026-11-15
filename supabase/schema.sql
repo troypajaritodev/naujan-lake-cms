@@ -276,6 +276,51 @@ create trigger advisories_touch_updated_at
   before update on public.advisories
   for each row execute function public.touch_updated_at();
 
+-- Automatically mirror new Supabase Auth sign-ups into public.users as visitor
+create or replace function public.handle_new_user()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  resolved_name text;
+begin
+  resolved_name := left(
+    coalesce(
+      nullif(trim(new.raw_user_meta_data ->> 'full_name'), ''),
+      nullif(split_part(coalesce(new.email, ''), '@', 1), ''),
+      'Park Visitor'
+    ),
+    120
+  );
+  if char_length(resolved_name) < 2 then
+    resolved_name := 'Park Visitor';
+  end if;
+
+  insert into public.users (id, email, full_name, phone, role, password_hash)
+  values (
+    new.id,
+    lower(new.email),
+    resolved_name,
+    nullif(trim(new.raw_user_meta_data ->> 'phone'), ''),
+    'visitor',
+    'supabase-auth-managed'
+  )
+  on conflict (email) do update
+    set id = excluded.id,
+        full_name = coalesce(nullif(excluded.full_name, ''), public.users.full_name),
+        phone = coalesce(excluded.phone, public.users.phone);
+
+  return new;
+end;
+$$;
+
+drop trigger if exists on_auth_user_created on auth.users;
+create trigger on_auth_user_created
+  after insert on auth.users
+  for each row execute function public.handle_new_user();
+
 -- ---------------------------------------------------------------------------
 -- 5. Row-Level Security
 -- ---------------------------------------------------------------------------

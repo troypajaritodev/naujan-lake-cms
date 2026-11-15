@@ -4,7 +4,9 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
+  useState,
   useSyncExternalStore,
   type ReactNode,
 } from "react";
@@ -13,6 +15,7 @@ import {
   changePassword as changePasswordRecord,
   getServerSessionSnapshot,
   getSessionSnapshot,
+  refreshSessionFromServer,
   register as registerRecord,
   signIn as signInRecord,
   signOut as signOutRecord,
@@ -25,35 +28,38 @@ import {
 
 type AuthValue = {
   user: SessionUser | null;
-  /** False until the stored session has been read on the client. */
+  /** False until the HttpOnly server session has been verified on the client. */
   ready: boolean;
   register: (input: RegisterInput) => Promise<SessionUser>;
   signIn: (email: string, password: string) => Promise<SessionUser>;
   /**
-   * Clear the session and leave the protected screen. Defaults to the sign-in
-   * page; pass a path to land somewhere else (for example `/`).
+   * Clear the HttpOnly session cookie and leave the protected screen.
    */
-  signOut: (redirectTo?: string) => void;
-  updateProfile: (input: ProfileInput) => SessionUser;
+  signOut: (redirectTo?: string) => Promise<void>;
+  updateProfile: (input: ProfileInput) => Promise<SessionUser>;
   changePassword: (current: string, next: string) => Promise<void>;
 };
 
 const AuthContext = createContext<AuthValue | null>(null);
 
-const noopSubscribe = () => () => {};
-const clientReady = () => true;
-const serverReady = () => false;
-
 export function AuthProvider({ children }: { children: ReactNode }) {
   const router = useRouter();
-  // The session lives in localStorage, so it is read as an external store —
-  // every tab re-renders when the account or session key changes.
   const user = useSyncExternalStore(
     subscribe,
     getSessionSnapshot,
     getServerSessionSnapshot,
   );
-  const ready = useSyncExternalStore(noopSubscribe, clientReady, serverReady);
+  const [ready, setReady] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    refreshSessionFromServer().finally(() => {
+      if (active) setReady(true);
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const register = useCallback(async (input: RegisterInput) => {
     return registerRecord(input);
@@ -64,12 +70,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const signOut = useCallback(
-    (redirectTo = "/login?signedOut=1") => {
-      signOutRecord();
+    async (redirectTo = "/login?signedOut=1") => {
+      await signOutRecord();
 
-      // Full navigation, not `router.replace`: the protected screen must not
-      // get a chance to run its "no session" guard (which would rewrite the
-      // URL with `?next=`) before the sign-in page renders.
       if (typeof window !== "undefined") {
         window.location.replace(redirectTo);
       } else {
@@ -79,7 +82,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [router],
   );
 
-  const updateProfile = useCallback((input: ProfileInput) => {
+  const updateProfile = useCallback(async (input: ProfileInput) => {
     return updateProfileRecord(input);
   }, []);
 
@@ -98,7 +101,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 export function useAuth(): AuthValue {
   const context = useContext(AuthContext);
   if (!context) {
-    throw new Error("useAuth must be used inside <AuthProvider>.");
+    throw new Error("useAuth must be called inside <AuthProvider>.");
   }
   return context;
 }
