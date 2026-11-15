@@ -45,6 +45,7 @@ type CollectionOverride<T extends { slug: string }> = {
 export type ContentOverrides = {
   advisories: CollectionOverride<Advisory>;
   tours: {
+    created: Tour[];
     edited: Record<string, TourPatch>;
     /** Packages pulled from the public catalogue without deleting them. */
     unpublished: string[];
@@ -61,7 +62,7 @@ export type ContentOverrides = {
 export function emptyOverrides(): ContentOverrides {
   return {
     advisories: { created: [], edited: {}, archived: [] },
-    tours: { edited: {}, unpublished: [] },
+    tours: { created: [], edited: {}, unpublished: [] },
     species: { created: [], edited: {}, archived: [] },
     guidelines: { rules: null, zones: null },
   };
@@ -100,6 +101,7 @@ function normalise(raw: unknown): ContentOverrides {
   return {
     advisories: normaliseCollection<Advisory>(raw.advisories),
     tours: {
+      created: Array.isArray(tours.created) ? (tours.created as Tour[]) : [],
       edited: isRecord(tours.edited)
         ? (tours.edited as Record<string, TourPatch>)
         : {},
@@ -251,12 +253,25 @@ function applyPatch<T extends { slug: string }>(
         return overrides.guidelines.zones ?? base;
       }
 
-      /** Base packages with staff edits applied, including unpublished ones. */
+      /** Staff-created plus base packages with edits applied, including unpublished ones. */
       export function applyTourEdits(
         base: Tour[],
         overrides: ContentOverrides,
       ): Tour[] {
-        return base.map((tour) => applyPatch(tour, overrides.tours.edited[tour.slug]));
+        const seen = new Set<string>();
+        const merged: Tour[] = [];
+
+        for (const created of overrides.tours.created) {
+          seen.add(created.slug);
+          merged.push(applyPatch(created, overrides.tours.edited[created.slug]));
+        }
+
+        for (const tour of base) {
+          if (seen.has(tour.slug)) continue;
+          merged.push(applyPatch(tour, overrides.tours.edited[tour.slug]));
+        }
+
+        return merged;
       }
 
       /** Packages on sale: base rows minus unpublished, with staff edits applied. */

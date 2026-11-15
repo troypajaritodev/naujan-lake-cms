@@ -15,6 +15,14 @@ are **not** all the same version, so check the relevant row before reuse.
 | `aerial.jpg` | [Naujan Lake (Naujan, Oriental Mindoro; 10-06-2023)](https://commons.wikimedia.org/wiki/File:Naujan_Lake_(Naujan,_Oriental_Mindoro;_10-06-2023).jpg) | Patrickroque01 | [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/) |
 | `ducklings.jpg` | [Philippine Duck and Ducklings](https://commons.wikimedia.org/wiki/File:Philippine_Duck_and_Ducklings.jpg) | Nardrey | [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/) |
 
+## Package-specific visual imagery (custom)
+
+| Local file | Depiction | Source | Usage |
+| :--- | :--- | :--- | :--- |
+| `tours/sunrise-boat-tour.jpg` | Wooden outrigger *bangka* at golden sunrise on Naujan Lake | Custom project illustration | Sunrise boat tour package |
+| `tours/lakeside-community-homestay.jpg` | Bamboo & nipa stilt homestay cottage and pier by calm wetland shoreline | Custom project illustration | Lakeside community homestay package |
+| `tours/educational-research-trek.jpg` | Wooden wetland conservation boardwalk through lakeside reeds and mangroves | Custom project illustration | Educational research trek package |
+
 ## Wildlife catalogue photography (18 species)
 
 Every species record has its own photograph, credited on the catalogue card and

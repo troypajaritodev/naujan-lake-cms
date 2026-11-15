@@ -9,12 +9,14 @@
  * remounts on open, so switching rows never leaks the previous values.
  */
 
+import Image from "next/image";
 import { useState, useTransition } from "react";
 import {
   ArrowUpRight,
   Banknote,
   CircleSlash,
   PencilLine,
+  Plus,
   RotateCcw,
   Users,
   X,
@@ -23,7 +25,11 @@ import {
   saveTourAction,
   setTourPublishedAction,
 } from "@/app/admin/tours/actions";
-import type { Tour, TourDifficulty } from "@/lib/tours";
+import {
+  TOUR_IMAGE_OPTIONS,
+  type Tour,
+  type TourDifficulty,
+} from "@/lib/tours-meta";
 
 const peso = new Intl.NumberFormat("en-PH", {
   style: "currency",
@@ -58,6 +64,8 @@ export default function TourManager({
   tours: Tour[];
   unpublished: string[];
 }) {
+  const [creating, setCreating] = useState(false);
+  const [createImage, setCreateImage] = useState<string>(TOUR_IMAGE_OPTIONS[0].path);
   const [editing, setEditing] = useState<string | null>(null);
   const [notice, setNotice] = useState<Notice | null>(null);
   const [pending, startTransition] = useTransition();
@@ -71,6 +79,7 @@ export default function TourManager({
     startTransition(async () => {
       const result = await saveTourAction(formData);
       if (result.ok) {
+        setCreating(false);
         setEditing(null);
         setNotice({ tone: "ok", text: result.message });
       } else {
@@ -113,18 +122,247 @@ export default function TourManager({
         aria-labelledby="tour-list-heading"
         className="overflow-hidden rounded-2xl bg-white ring-1 ring-ink/8"
       >
-        <div className="border-b border-ink/8 px-5 py-4">
-          <h2
-            id="tour-list-heading"
-            className="font-display text-[19px] leading-tight text-ink"
+        <div className="flex flex-wrap items-center justify-between gap-4 border-b border-ink/8 px-5 py-4">
+          <div>
+            <h2
+              id="tour-list-heading"
+              className="font-display text-[19px] leading-tight text-ink"
+            >
+              Tour packages
+            </h2>
+            <p className="mt-0.5 text-[12.5px] text-ink-soft/65">
+              Price and capacity feed the package page, the inquiry form and the
+              revenue report
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => {
+              setNotice(null);
+              setEditing(null);
+              setCreating((prev) => !prev);
+            }}
+            className="inline-flex items-center gap-1.5 rounded-full bg-ink px-4 py-2 text-[12px] font-semibold text-sand-50 transition hover:bg-ink/85"
           >
-            Tour packages
-          </h2>
-          <p className="mt-0.5 text-[12.5px] text-ink-soft/65">
-            Price and capacity feed the package page, the inquiry form and the
-            revenue report
-          </p>
+            {creating ? (
+              <>
+                <X className="size-3.5" strokeWidth={2.2} />
+                Close form
+              </>
+            ) : (
+              <>
+                <Plus className="size-3.5" strokeWidth={2.2} />
+                Add package
+              </>
+            )}
+          </button>
         </div>
+
+        {creating ? (
+          <form
+            onSubmit={submit}
+            className="space-y-4 border-b border-ink/8 bg-sand-50/60 px-5 py-5"
+          >
+            <input type="hidden" name="mode" value="create" />
+
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-[11px] font-semibold tracking-[0.14em] text-moss-700 uppercase">
+                New eco-tour package
+              </p>
+              <span className="text-[11.5px] text-ink-soft/55">
+                Published immediately to `/tours` and inquiry selectors
+              </span>
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              <div>
+                <label htmlFor="create-title" className={labelClass}>
+                  Package title
+                </label>
+                <input
+                  id="create-title"
+                  name="title"
+                  placeholder="e.g. Sunset mangrove kayak loop"
+                  maxLength={90}
+                  required
+                  className={`mt-1.5 ${fieldClass}`}
+                />
+              </div>
+
+              <div>
+                <label htmlFor="create-category" className={labelClass}>
+                  Category
+                </label>
+                <input
+                  id="create-category"
+                  name="category"
+                  defaultValue="Eco-Tour"
+                  maxLength={40}
+                  required
+                  className={`mt-1.5 ${fieldClass}`}
+                />
+              </div>
+
+              <div>
+                <label htmlFor="create-image" className={labelClass}>
+                  Package visual
+                </label>
+                <div className="mt-1.5 flex items-center gap-2.5">
+                  <Image
+                    src={createImage}
+                    alt="Selected package preview"
+                    width={40}
+                    height={40}
+                    className="size-10 shrink-0 rounded-lg object-cover ring-1 ring-ink/10"
+                  />
+                  <select
+                    id="create-image"
+                    name="image"
+                    value={createImage}
+                    onChange={(event) => setCreateImage(event.target.value)}
+                    className={`cursor-pointer ${fieldClass}`}
+                  >
+                    {TOUR_IMAGE_OPTIONS.map((option) => (
+                      <option key={option.path} value={option.path}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+              <div>
+                <label htmlFor="create-rate" className={labelClass}>
+                  Rate per person (₱)
+                </label>
+                <input
+                  id="create-rate"
+                  name="ratePerPerson"
+                  type="number"
+                  min={100}
+                  max={50000}
+                  step={1}
+                  defaultValue={850}
+                  required
+                  className={`mt-1.5 ${fieldClass}`}
+                />
+              </div>
+
+              <div>
+                <label htmlFor="create-seats" className={labelClass}>
+                  Seats per departure
+                </label>
+                <input
+                  id="create-seats"
+                  name="maxCapacity"
+                  type="number"
+                  min={1}
+                  max={40}
+                  defaultValue={10}
+                  required
+                  className={`mt-1.5 ${fieldClass}`}
+                />
+              </div>
+
+              <div>
+                <label htmlFor="create-duration" className={labelClass}>
+                  Duration
+                </label>
+                <input
+                  id="create-duration"
+                  name="duration"
+                  placeholder="e.g. 3 hours"
+                  maxLength={60}
+                  required
+                  className={`mt-1.5 ${fieldClass}`}
+                />
+              </div>
+
+              <div>
+                <label htmlFor="create-departure" className={labelClass}>
+                  Departure
+                </label>
+                <input
+                  id="create-departure"
+                  name="departure"
+                  placeholder="e.g. 6:00 AM, Park Jetty"
+                  maxLength={60}
+                  required
+                  className={`mt-1.5 ${fieldClass}`}
+                />
+              </div>
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-[200px_1fr_1fr]">
+              <div>
+                <label htmlFor="create-difficulty" className={labelClass}>
+                  Difficulty
+                </label>
+                <select
+                  id="create-difficulty"
+                  name="difficulty"
+                  defaultValue="EASY"
+                  className={`mt-1.5 cursor-pointer ${fieldClass}`}
+                >
+                  {DIFFICULTIES.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label htmlFor="create-summary" className={labelClass}>
+                  Summary
+                </label>
+                <textarea
+                  id="create-summary"
+                  name="summary"
+                  rows={2}
+                  maxLength={320}
+                  placeholder="Describe the route, highlights, and what guests experience."
+                  required
+                  className={`mt-1.5 resize-y ${fieldClass}`}
+                />
+              </div>
+
+              <div>
+                <label htmlFor="create-inclusions" className={labelClass}>
+                  Inclusions (one per line)
+                </label>
+                <textarea
+                  id="create-inclusions"
+                  name="inclusions"
+                  rows={2}
+                  maxLength={1200}
+                  placeholder="Licensed boat and life vest&#10;Accredited park ranger guide&#10;Park entrance fee"
+                  className={`mt-1.5 resize-y ${fieldClass}`}
+                />
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-3">
+              <button
+                type="submit"
+                disabled={pending}
+                className="inline-flex items-center gap-2 rounded-full bg-ink px-5 py-2.5 text-[12.5px] font-semibold text-sand-50 transition hover:bg-ink/85 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {pending ? "Creating…" : "Create package"}
+              </button>
+              <button
+                type="button"
+                onClick={() => setCreating(false)}
+                className="rounded-full px-3 py-2 text-[12px] font-medium text-ink-soft/70 transition hover:bg-sand-100 hover:text-ink"
+              >
+                Cancel
+              </button>
+            </div>
+          </form>
+        ) : null}
 
         <ul className="divide-y divide-ink/6">
           {tours.map((tour) => {
@@ -213,7 +451,65 @@ export default function TourManager({
                     onSubmit={submit}
                     className="space-y-4 border-t border-ink/6 bg-sand-50/50 px-5 py-5"
                   >
+                    <input type="hidden" name="mode" value="edit" />
                     <input type="hidden" name="slug" value={tour.slug} />
+
+                    <div className="grid gap-4 sm:grid-cols-3">
+                      <div>
+                        <label
+                          htmlFor={`title-${tour.slug}`}
+                          className={labelClass}
+                        >
+                          Package title
+                        </label>
+                        <input
+                          id={`title-${tour.slug}`}
+                          name="title"
+                          defaultValue={tour.title}
+                          maxLength={90}
+                          required
+                          className={`mt-1.5 ${fieldClass}`}
+                        />
+                      </div>
+
+                      <div>
+                        <label
+                          htmlFor={`category-${tour.slug}`}
+                          className={labelClass}
+                        >
+                          Category
+                        </label>
+                        <input
+                          id={`category-${tour.slug}`}
+                          name="category"
+                          defaultValue={tour.category}
+                          maxLength={40}
+                          required
+                          className={`mt-1.5 ${fieldClass}`}
+                        />
+                      </div>
+
+                      <div>
+                        <label
+                          htmlFor={`image-${tour.slug}`}
+                          className={labelClass}
+                        >
+                          Package visual
+                        </label>
+                        <select
+                          id={`image-${tour.slug}`}
+                          name="image"
+                          defaultValue={tour.image}
+                          className={`mt-1.5 cursor-pointer ${fieldClass}`}
+                        >
+                          {TOUR_IMAGE_OPTIONS.map((option) => (
+                            <option key={option.path} value={option.path}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
 
                     <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
                       <div>
