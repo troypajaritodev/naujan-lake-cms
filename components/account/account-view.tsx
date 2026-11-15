@@ -30,6 +30,7 @@ import {
   Send,
   ShieldCheck,
   Ticket,
+  Trash2,
   UserRound,
   Users,
   X,
@@ -43,6 +44,7 @@ import {
   addInquiryMessage,
   canCancelInquiry,
   cancelInquiry,
+  deleteInquiry,
   InquiryError,
   submitFirstPayment,
   useInquiries,
@@ -234,6 +236,10 @@ function AccountDashboard({ user }: { user: SessionUser }) {
   const [cancellingId, setCancellingId] = useState<string | null>(null);
   const [cancelError, setCancelError] = useState<string | null>(null);
 
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
   const [payFormId, setPayFormId] = useState<string | null>(null);
   const [payDraft, setPayDraft] = useState({
     paymentMethod: "GCASH" as PaymentMethod,
@@ -334,10 +340,35 @@ function AccountDashboard({ user }: { user: SessionUser }) {
     }
   }
 
-  async function handleSubmitFirstPayment(inquiry: Inquiry) {
+  async function removeBooking(inquiry: Inquiry) {
+    setDeletingId(inquiry.id);
+    setDeleteError(null);
+
+    try {
+      await deleteInquiry(inquiry.id, user.email);
+      setDeleteConfirmId(null);
+      setConfirmId(null);
+    } catch (error) {
+      setDeleteError(
+        error instanceof InquiryError
+          ? error.message
+          : "Could not delete this booking.",
+      );
+    } finally {
+      setDeletingId(null);
+    }
+  }
+
+  async function handleSubmitFirstPayment(
+    inquiry: Inquiry,
+    overrideReference?: string,
+  ) {
     setPayError(null);
-    if (payDraft.paymentReference.trim().length < 4) {
-      setPayError("Enter a valid transaction/reference number.");
+    const refToUse = (overrideReference ?? payDraft.paymentReference).trim();
+    if (refToUse.length < 4) {
+      setPayError(
+        "Enter a valid reference number (at least 4 characters) or use Instant pay.",
+      );
       return;
     }
     setPayPending(true);
@@ -348,7 +379,7 @@ function AccountDashboard({ user }: { user: SessionUser }) {
       const firstPaymentAmount = Math.round(totalAmount * payDraft.rate);
       await submitFirstPayment(inquiry.id, user.email, {
         paymentMethod: payDraft.paymentMethod,
-        paymentReference: payDraft.paymentReference.trim(),
+        paymentReference: refToUse,
         paymentAccountName: payDraft.paymentAccountName.trim() || user.fullName,
         firstPaymentRate: payDraft.rate,
         firstPaymentAmount,
@@ -808,6 +839,8 @@ function AccountDashboard({ user }: { user: SessionUser }) {
                   const stepIdx = trackerStepIndex(inquiry.status);
                   const confirming = confirmId === inquiry.id;
                   const cancelling = cancellingId === inquiry.id;
+                  const deleteConfirming = deleteConfirmId === inquiry.id;
+                  const deleting = deletingId === inquiry.id;
                   const showTimeline = expandedTimelineId === inquiry.id;
                   const showPayForm = payFormId === inquiry.id;
                   const lastMessage =
@@ -1163,6 +1196,29 @@ function AccountDashboard({ user }: { user: SessionUser }) {
                                     <button
                                       type="button"
                                       disabled={payPending}
+                                      onClick={() => {
+                                        const prefix =
+                                          payDraft.paymentMethod === "GCASH"
+                                            ? "GC"
+                                            : payDraft.paymentMethod === "MAYA"
+                                              ? "MY"
+                                              : "LBP";
+                                        const instantRef = `${prefix}-${Math.floor(100_000_000 + Math.random() * 900_000_000)}`;
+                                        void handleSubmitFirstPayment(
+                                          inquiry,
+                                          instantRef,
+                                        );
+                                      }}
+                                      className="inline-flex items-center gap-1.5 rounded-full bg-moss-700 px-4 py-1.5 text-[12px] font-semibold text-white hover:bg-moss-800 disabled:opacity-60"
+                                    >
+                                      {payPending && (
+                                        <Loader2 className="size-3.5 animate-spin" />
+                                      )}
+                                      Instant pay now
+                                    </button>
+                                    <button
+                                      type="button"
+                                      disabled={payPending}
                                       onClick={() =>
                                         void handleSubmitFirstPayment(inquiry)
                                       }
@@ -1171,7 +1227,7 @@ function AccountDashboard({ user }: { user: SessionUser }) {
                                       {payPending && (
                                         <Loader2 className="size-3.5 animate-spin" />
                                       )}
-                                      Save payment
+                                      Save manual ref
                                     </button>
                                     <button
                                       type="button"
@@ -1254,19 +1310,36 @@ function AccountDashboard({ user }: { user: SessionUser }) {
                             </Link>
                           </div>
 
-                          {canCancelInquiry(inquiry) && !confirming && (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setConfirmId(inquiry.id);
-                                setCancelError(null);
-                              }}
-                              className="inline-flex items-center gap-1.5 text-[12px] font-semibold text-alert-600 hover:text-alert-700"
-                            >
-                              <Ban className="size-3.5" strokeWidth={2} />
-                              Withdraw booking
-                            </button>
-                          )}
+                          <div className="flex flex-wrap items-center gap-3">
+                            {canCancelInquiry(inquiry) && !confirming && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setConfirmId(inquiry.id);
+                                  setDeleteConfirmId(null);
+                                  setCancelError(null);
+                                }}
+                                className="inline-flex items-center gap-1.5 rounded-full border border-alert-500/30 bg-alert-50/70 px-3 py-1 text-[11.5px] font-semibold text-alert-700 transition-colors hover:bg-alert-100"
+                              >
+                                <Ban className="size-3.5" strokeWidth={2} />
+                                Cancel booking
+                              </button>
+                            )}
+                            {!deleteConfirming && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setDeleteConfirmId(inquiry.id);
+                                  setConfirmId(null);
+                                  setDeleteError(null);
+                                }}
+                                className="inline-flex items-center gap-1.5 rounded-full border border-ink/12 bg-white px-3 py-1 text-[11.5px] font-semibold text-ink-soft transition-colors hover:border-alert-500/40 hover:bg-alert-50 hover:text-alert-700"
+                              >
+                                <Trash2 className="size-3.5" strokeWidth={2} />
+                                Delete
+                              </button>
+                            )}
+                          </div>
                         </div>
 
                         {confirming && (
@@ -1276,7 +1349,7 @@ function AccountDashboard({ user }: { user: SessionUser }) {
                             className="rounded-xl bg-sand-50 p-3.5 ring-1 ring-ink/8"
                           >
                             <p className="text-[12.5px] leading-relaxed text-ink-soft/85">
-                              Withdraw this booking? The park office is notified
+                              Cancel this booking? The park office is notified
                               immediately so the boat slot is released.
                             </p>
                             <div className="mt-2.5 flex flex-wrap gap-2">
@@ -1289,7 +1362,7 @@ function AccountDashboard({ user }: { user: SessionUser }) {
                                 {cancelling && (
                                   <Loader2 className="size-3.5 animate-spin" />
                                 )}
-                                Yes, withdraw booking
+                                Yes, cancel booking
                               </button>
                               <button
                                 type="button"
@@ -1310,6 +1383,52 @@ function AccountDashboard({ user }: { user: SessionUser }) {
                               >
                                 <AlertCircle className="size-3.5" />
                                 {cancelError}
+                              </p>
+                            )}
+                          </div>
+                        )}
+
+                        {deleteConfirming && (
+                          <div
+                            role="group"
+                            aria-label={`Delete ${inquiry.reference}`}
+                            className="rounded-xl bg-alert-50/60 p-3.5 ring-1 ring-alert-500/25"
+                          >
+                            <p className="text-[12.5px] leading-relaxed text-ink">
+                              Delete booking <strong>{inquiry.reference}</strong> permanently?
+                              This removes it from your booking list and releases any held boat seats.
+                            </p>
+                            <div className="mt-2.5 flex flex-wrap gap-2">
+                              <button
+                                type="button"
+                                onClick={() => void removeBooking(inquiry)}
+                                disabled={deleting}
+                                className="inline-flex items-center gap-1.5 rounded-full bg-alert-700 px-3.5 py-1.5 text-[12px] font-semibold text-white hover:bg-alert-800 disabled:opacity-60"
+                              >
+                                {deleting && (
+                                  <Loader2 className="size-3.5 animate-spin" />
+                                )}
+                                Yes, delete permanently
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setDeleteConfirmId(null);
+                                  setDeleteError(null);
+                                }}
+                                disabled={deleting}
+                                className="inline-flex items-center rounded-full border border-ink/15 bg-white px-3.5 py-1.5 text-[12px] font-semibold text-ink hover:bg-sand-100"
+                              >
+                                Keep booking
+                              </button>
+                            </div>
+                            {deleteError && (
+                              <p
+                                role="alert"
+                                className="mt-2 flex items-center gap-1.5 text-[12px] text-alert-700"
+                              >
+                                <AlertCircle className="size-3.5" />
+                                {deleteError}
                               </p>
                             )}
                           </div>

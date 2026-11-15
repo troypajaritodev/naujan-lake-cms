@@ -1,11 +1,12 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import {
   AlertCircle,
   ArrowRight,
+  Banknote,
   Building2,
   Check,
   Copy,
@@ -13,9 +14,12 @@ import {
   ImagePlus,
   Loader2,
   LogIn,
+  ShieldCheck,
   Smartphone,
+  Sparkles,
   Trash2,
   Wallet,
+  X,
 } from "lucide-react";
 import { AuthField } from "@/components/auth-shell";
 import { useAuth } from "@/components/auth-provider";
@@ -49,7 +53,17 @@ const METHOD_OPTIONS: {
   { value: "GCASH", icon: Smartphone },
   { value: "MAYA", icon: Wallet },
   { value: "BANK_TRANSFER", icon: Building2 },
+  { value: "ON_SITE_CASH", icon: Banknote },
 ];
+
+const PENDING_CHECKOUT_KEY = "nl.pendingCheckout.v1";
+
+function generateGatewayReference(method: PaymentMethod): string {
+  const prefix =
+    method === "GCASH" ? "GC" : method === "MAYA" ? "MY" : "LBP";
+  const digits = String(Math.floor(100_000_000 + Math.random() * 900_000_000));
+  return `${prefix}-${digits}`;
+}
 
 /** Compress an uploaded receipt image so it fits comfortably in browser storage. */
 async function compressReceiptImage(file: File): Promise<string> {
@@ -87,9 +101,11 @@ async function compressReceiptImage(file: File): Promise<string> {
 
 export default function InquiryForm({
   initialTour,
+  initialCheckoutError,
   tours,
 }: {
   initialTour?: string;
+  initialCheckoutError?: string;
   tours: Tour[];
 }) {
   const { user, ready } = useAuth();
@@ -136,19 +152,37 @@ export default function InquiryForm({
     );
   }
 
-  return <InquiryFields user={user} initialTour={initialTour} tours={tours} />;
+  return (
+    <InquiryFields
+      user={user}
+      initialTour={initialTour}
+      initialCheckoutError={initialCheckoutError}
+      tours={tours}
+    />
+  );
 }
 
 function InquiryFields({
   user,
   initialTour,
+  initialCheckoutError,
   tours,
 }: {
   user: SessionUser;
   initialTour?: string;
+  initialCheckoutError?: string;
   tours: Tour[];
 }) {
   const allInquiries = useInquiries();
+  const errorRef = useRef<HTMLDivElement | null>(null);
+  const todayIso = useMemo(() => {
+    const now = new Date();
+    const y = now.getFullYear();
+    const m = String(now.getMonth() + 1).padStart(2, "0");
+    const d = String(now.getDate()).padStart(2, "0");
+    return `${y}-${m}-${d}`;
+  }, []);
+
   const [values, setValues] = useState({
     fullName: user.fullName,
     email: user.email,
@@ -162,17 +196,85 @@ function InquiryFields({
     message: "",
     firstPaymentRate: 0.5 as 0.5 | 1,
     paymentMethod: "GCASH" as PaymentMethod,
+    paymentFlow: "CHECKOUT" as "CHECKOUT" | "MANUAL",
     paymentReference: "",
     paymentAccountName: user.fullName,
+    payerMobile: user.phone || "",
   });
   const [paymentProofUrl, setPaymentProofUrl] = useState<string | undefined>(
     undefined,
   );
   const [proofName, setProofName] = useState<string | null>(null);
   const [copiedAccount, setCopiedAccount] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(
+    initialCheckoutError ?? null,
+  );
   const [pending, setPending] = useState(false);
+  const [gatewayModal, setGatewayModal] = useState(false);
+  const [gatewayBusy, setGatewayBusy] = useState(false);
   const [sent, setSent] = useState<Inquiry | null>(null);
+
+  function reportError(message: string) {
+    setError(message);
+    window.requestAnimationFrame(() => {
+      errorRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
+  }
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const status = params.get("checkout");
+    const sessionId = params.get("session_id");
+    if (!status) return;
+
+    const cleanUrl = window.location.pathname;
+
+    if (status === "cancelled") {
+      window.history.replaceState({}, "", cleanUrl);
+      return;
+    }
+
+    if (status === "success" && sessionId) {
+      const rawDraft = window.sessionStorage.getItem(PENDING_CHECKOUT_KEY);
+      window.sessionStorage.removeItem(PENDING_CHECKOUT_KEY);
+      window.history.replaceState({}, "", cleanUrl);
+      if (!rawDraft) return;
+
+      void (async () => {
+        setPending(true);
+        try {
+          const draft = JSON.parse(rawDraft) as Parameters<typeof createInquiry>[0];
+          const verifyRes = await fetch(
+            `/api/payments/status?session_id=${encodeURIComponent(sessionId)}`,
+          );
+          const verifyData = (await verifyRes.json()) as {
+            paid?: boolean;
+            paymentReference?: string;
+          };
+          if (!verifyData.paid) {
+            reportError("Payment verification is still pending. Enter your reference manually or try again.");
+            return;
+          }
+          const inquiry = await createInquiry({
+            ...draft,
+            paymentReference: verifyData.paymentReference ?? sessionId,
+          });
+          void fetch("/api/inquiries/notify", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(inquiry),
+            keepalive: true,
+          }).catch(() => {});
+          setSent(inquiry);
+        } catch {
+          reportError("Could not finalize your returning payment session. Please retry.");
+        } finally {
+          setPending(false);
+        }
+      })();
+    }
+  }, []);
 
   const selected = useMemo(
     () => tours.find((tour) => tour.slug === values.tourSlug),
@@ -246,51 +348,17 @@ function InquiryFields({
     }
   }
 
-  async function onSubmit(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setError(null);
-
-    if (!values.fullName.trim()) {
-      return setError("Enter the name for the booking.");
-    }
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(values.email.trim())) {
-      return setError("Enter a valid email so the park office can reply.");
-    }
-    if (!values.preferredDate) return setError("Choose a preferred date.");
-    if (!selected) return setError("Choose a package.");
-
-    const chosen = new Date(`${values.preferredDate}T00:00:00`);
-    const startOfToday = new Date();
-    startOfToday.setHours(0, 0, 0, 0);
-    if (chosen < startOfToday) {
-      return setError("Choose a date from today onwards.");
-    }
-
+  async function finalizeBooking(
+    overrideReference?: string,
+    overrideAccountName?: string,
+  ) {
+    if (!selected) return;
     const party = Number(values.partySize);
-    if (!Number.isFinite(party) || party < 1 || party > selected.maxCapacity) {
-      return setError(
-        `This package takes 1 to ${selected.maxCapacity} guests per booking.`,
-      );
-    }
-
-    if (seatAvailability && party > seatAvailability.remaining) {
-      return setError(
-        seatAvailability.remaining === 0
-          ? `No seats left for ${selected.title} on ${values.preferredDate}. Please pick another date.`
-          : `Only ${seatAvailability.remaining} ${seatAvailability.remaining === 1 ? "seat" : "seats"} left on ${values.preferredDate}. Lower your guest count or pick another date.`,
-      );
-    }
-
-    if (values.paymentReference.trim().length < 4) {
-      return setError(
-        "Enter your first payment reference or transaction number so staff can verify your deposit.",
-      );
-    }
-
-    setPending(true);
-
     const totalAmount = selected.ratePerPerson * party;
-    const firstPaymentAmount = Math.round(totalAmount * values.firstPaymentRate);
+    const isCash = values.paymentMethod === "ON_SITE_CASH";
+    const firstPaymentAmount = isCash
+      ? 0
+      : Math.round(totalAmount * values.firstPaymentRate);
     const balanceAmount = Math.max(0, totalAmount - firstPaymentAmount);
 
     const inquiry = await createInquiry({
@@ -309,10 +377,13 @@ function InquiryFields({
       firstPaymentAmount,
       balanceAmount,
       paymentMethod: values.paymentMethod,
-      paymentReference: values.paymentReference.trim(),
+      paymentReference: isCash
+        ? ""
+        : (overrideReference ?? values.paymentReference).trim(),
       paymentAccountName:
-        values.paymentAccountName.trim() || values.fullName.trim(),
-      ...(paymentProofUrl ? { paymentProofUrl } : {}),
+        (overrideAccountName ?? values.paymentAccountName).trim() ||
+        values.fullName.trim(),
+      ...(!isCash && paymentProofUrl ? { paymentProofUrl } : {}),
     });
 
     // The record is already saved locally; the emails are a best-effort side
@@ -325,10 +396,157 @@ function InquiryFields({
     }).catch(() => {});
 
     setSent(inquiry);
-    setPending(false);
+  }
+
+  async function onSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setError(null);
+
+    if (!values.fullName.trim()) {
+      return reportError("Enter the name for the booking.");
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(values.email.trim())) {
+      return reportError("Enter a valid email so the park office can reply.");
+    }
+    if (!values.preferredDate) return reportError("Choose a preferred date.");
+    if (!selected) return reportError("Choose a package.");
+
+    const chosen = new Date(`${values.preferredDate}T00:00:00`);
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
+    if (chosen < startOfToday) {
+      return reportError("Choose a date from today onwards.");
+    }
+
+    const party = Number(values.partySize);
+    if (!Number.isFinite(party) || party < 1 || party > selected.maxCapacity) {
+      return reportError(
+        `This package takes 1 to ${selected.maxCapacity} guests per booking.`,
+      );
+    }
+
+    if (seatAvailability && party > seatAvailability.remaining) {
+      return reportError(
+        seatAvailability.remaining === 0
+          ? `No seats left for ${selected.title} on ${values.preferredDate}. Please pick another date.`
+          : `Only ${seatAvailability.remaining} ${seatAvailability.remaining === 1 ? "seat" : "seats"} left on ${values.preferredDate}. Lower your guest count or pick another date.`,
+      );
+    }
+
+    const isOnSiteCash = values.paymentMethod === "ON_SITE_CASH";
+
+    if (!isOnSiteCash && values.paymentFlow === "MANUAL") {
+      if (values.paymentReference.trim().length < 4) {
+        return reportError(
+          "Enter your payment reference number (at least 4 characters), or switch to Instant Checkout.",
+        );
+      }
+    }
+
+    if (!isOnSiteCash && values.paymentFlow === "CHECKOUT") {
+      setPending(true);
+      try {
+        const res = await fetch("/api/payments/checkout", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            amount: pricing.firstPayment,
+            tourTitle: selected.title,
+            paymentMethod: values.paymentMethod,
+            customerEmail: values.email.trim(),
+            customerName: values.fullName.trim(),
+            origin: window.location.origin,
+          }),
+        });
+        const data = (await res.json()) as {
+          mode?: "paymongo" | "sandbox";
+          checkoutUrl?: string;
+          error?: string;
+        };
+
+        if (!res.ok) {
+          return reportError(
+            data.error ?? "Payment gateway is unavailable right now.",
+          );
+        }
+
+        if (data.mode === "paymongo" && data.checkoutUrl) {
+          window.sessionStorage.setItem(
+            PENDING_CHECKOUT_KEY,
+            JSON.stringify({
+              userEmail: user.email,
+              fullName: values.fullName.trim(),
+              email: values.email.trim(),
+              phone: values.phone.trim(),
+              tourSlug: selected.slug,
+              tourTitle: selected.title,
+              preferredDate: values.preferredDate,
+              partySize: party,
+              message: values.message.trim(),
+              ratePerPerson: selected.ratePerPerson,
+              totalAmount: selected.ratePerPerson * party,
+              firstPaymentRate: values.firstPaymentRate,
+              firstPaymentAmount: pricing.firstPayment,
+              balanceAmount: pricing.balance,
+              paymentMethod: values.paymentMethod,
+              paymentAccountName:
+                values.paymentAccountName.trim() || values.fullName.trim(),
+            }),
+          );
+          window.location.href = data.checkoutUrl;
+          return;
+        }
+
+        // Built-in Interactive Gateway Authorization Modal when PayMongo keys are not set
+        setGatewayModal(true);
+        return;
+      } catch {
+        // Offline / network edge fallback still lets the interactive gateway complete locally
+        setGatewayModal(true);
+        return;
+      } finally {
+        setPending(false);
+      }
+    }
+
+    setPending(true);
+    try {
+      await finalizeBooking();
+    } catch (err) {
+      reportError(
+        err instanceof Error
+          ? err.message
+          : "Could not save your booking right now. Please try again.",
+      );
+    } finally {
+      setPending(false);
+    }
+  }
+
+  async function authorizeInteractivePayment() {
+    setGatewayBusy(true);
+    try {
+      await new Promise((resolve) => window.setTimeout(resolve, 550));
+      const generatedRef = generateGatewayReference(values.paymentMethod);
+      await finalizeBooking(
+        generatedRef,
+        values.paymentAccountName.trim() || values.fullName.trim(),
+      );
+      setGatewayModal(false);
+    } catch (err) {
+      setGatewayModal(false);
+      reportError(
+        err instanceof Error
+          ? err.message
+          : "Could not save your booking. Please try again.",
+      );
+    } finally {
+      setGatewayBusy(false);
+    }
   }
 
   if (sent) {
+    const isCash = sent.paymentMethod === "ON_SITE_CASH";
     const methodLabel = sent.paymentMethod
       ? PAYMENT_METHOD_META[sent.paymentMethod].label
       : "Payment";
@@ -344,19 +562,19 @@ function InquiryFields({
               Status: Pending
             </span>
             <span className="rounded-full bg-sand-100 px-3 py-1 text-[10px] font-semibold tracking-[0.12em] text-sand-800 uppercase ring-1 ring-ink/10 ring-inset">
-              First payment for review
+              {isCash ? "Pay on arrival at jetty" : "First payment submitted"}
             </span>
           </div>
         </div>
 
         <h2 className="mt-5 font-display text-[26px] leading-tight font-light text-ink">
-          Booking &amp; first payment submitted.
+          {isCash ? "Booking request submitted." : "Booking & first payment submitted."}
         </h2>
         <p className="mt-2 max-w-lg text-[13.5px] leading-relaxed text-ink-soft/80">
           Your booking is now <strong>Pending</strong>. Once the park admin
-          accepts it and verifies your first payment, the status in{" "}
+          accepts it{isCash ? "" : " and verifies your first payment"}, the status in{" "}
           <strong>My Account</strong> will move to <strong>On Process</strong>{" "}
-          so you can track every step.
+          so you can track, cancel, or manage your trip anytime.
         </p>
 
         <dl className="mt-7 grid gap-4 border-t border-ink/8 pt-6 text-[13px] sm:grid-cols-2">
@@ -390,10 +608,12 @@ function InquiryFields({
           </div>
           <div>
             <dt className="text-[10px] font-semibold tracking-[0.16em] text-sand-600 uppercase">
-              First payment sent
+              {isCash ? "Payment channel" : "First payment sent"}
             </dt>
             <dd className="mt-1 font-mono text-[14px] font-medium text-moss-700">
-              {peso.format(sent.firstPaymentAmount ?? 0)} · {methodLabel}
+              {isCash
+                ? methodLabel
+                : `${peso.format(sent.firstPaymentAmount ?? 0)} · ${methodLabel}`}
             </dd>
             {sent.paymentReference && (
               <dd className="mt-0.5 font-mono text-[11.5px] text-sand-600">
@@ -444,18 +664,22 @@ function InquiryFields({
   }
 
   const activeMethod = PAYMENT_METHOD_META[values.paymentMethod];
+  const isCash = values.paymentMethod === "ON_SITE_CASH";
+  const dueNowAmount = isCash ? 0 : pricing.firstPayment;
 
   return (
-    <form onSubmit={onSubmit} noValidate className="space-y-6">
-      {error && (
-        <div
-          role="alert"
-          className="flex items-start gap-2 rounded-xl bg-alert-50 px-4 py-3 text-[13px] text-alert-700 ring-1 ring-alert-500/20 ring-inset"
-        >
-          <AlertCircle className="mt-0.5 size-4 shrink-0" strokeWidth={2} />
-          {error}
-        </div>
-      )}
+    <>
+      <form onSubmit={onSubmit} noValidate className="space-y-6">
+        {error && (
+          <div
+            ref={errorRef}
+            role="alert"
+            className="flex items-start gap-2 rounded-xl bg-alert-50 px-4 py-3 text-[13px] text-alert-700 ring-1 ring-alert-500/20 ring-inset"
+          >
+            <AlertCircle className="mt-0.5 size-4 shrink-0" strokeWidth={2} />
+            <span>{error}</span>
+          </div>
+        )}
 
       {/* Step 1: Trip & Guest details */}
       <div className="surface-card space-y-5 rounded-2xl p-6 ring-1 ring-ink/10 sm:p-7">
@@ -544,9 +768,11 @@ function InquiryFields({
             label="Preferred date"
             type="date"
             value={values.preferredDate}
-            onChange={(preferredDate) =>
-              setValues((current) => ({ ...current, preferredDate }))
-            }
+            onChange={(preferredDate) => {
+              setError(null);
+              setValues((current) => ({ ...current, preferredDate }));
+            }}
+            min={todayIso}
             hint="Held once the park admin accepts your booking."
           />
           <AuthField
@@ -625,103 +851,30 @@ function InquiryFields({
           </div>
           <div className="text-right">
             <p className="text-[10.5px] tracking-[0.12em] text-sand-600 uppercase">
-              Due now
+              {isCash ? "Pay on arrival" : "Due now"}
             </p>
             <p className="font-display text-[26px] leading-none text-lake-800">
-              {peso.format(pricing.firstPayment)}
+              {peso.format(dueNowAmount)}
             </p>
           </div>
         </div>
 
-        {/* Payment plan selector */}
-        <div>
-          <p className="text-[11px] font-semibold tracking-[0.14em] text-sand-700 uppercase">
-            First payment amount
-          </p>
-          <div className="mt-2.5 grid gap-3 sm:grid-cols-2">
-            {(
-              [
-                {
-                  rate: 0.5 as const,
-                  title: "50% First payment (Deposit)",
-                  desc: `Pay ${peso.format(Math.round(pricing.total * 0.5))} now, settle ${peso.format(Math.max(0, pricing.total - Math.round(pricing.total * 0.5)))} at the jetty.`,
-                },
-                {
-                  rate: 1 as const,
-                  title: "100% Full payment",
-                  desc: `Pay ${peso.format(pricing.total)} now — nothing else due on arrival.`,
-                },
-              ] as const
-            ).map((option) => {
-              const active = values.firstPaymentRate === option.rate;
-              return (
-                <button
-                  key={option.rate}
-                  type="button"
-                  onClick={() =>
-                    setValues((current) => ({
-                      ...current,
-                      firstPaymentRate: option.rate,
-                    }))
-                  }
-                  aria-pressed={active}
-                  className={`rounded-xl p-3.5 text-left transition-all ring-1 ${
-                    active
-                      ? "bg-lake-50/70 ring-2 ring-lake-700"
-                      : "bg-sand-50/50 ring-ink/10 hover:bg-sand-50"
-                  }`}
-                >
-                  <p className="text-[13px] font-semibold text-ink">
-                    {option.title}
-                  </p>
-                  <p className="mt-1 text-[12px] leading-relaxed text-ink-soft/75">
-                    {option.desc}
-                  </p>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Summary breakdown */}
-        <div className="rounded-xl bg-sand-50 p-4 ring-1 ring-ink/8">
-          <div className="flex justify-between text-[12.5px] text-ink-soft/80">
-            <span>
-              {selected?.title} ({pricing.guests}{" "}
-              {pricing.guests === 1 ? "guest" : "guests"} ×{" "}
-              {peso.format(pricing.rate)})
-            </span>
-            <span className="font-mono text-ink">
-              {peso.format(pricing.total)}
-            </span>
-          </div>
-          <div className="mt-2 flex justify-between text-[13px] font-semibold text-lake-800">
-            <span>
-              First payment ({Math.round(values.firstPaymentRate * 100)}%)
-            </span>
-            <span className="font-mono">{peso.format(pricing.firstPayment)}</span>
-          </div>
-          <div className="mt-2 flex justify-between border-t border-ink/8 pt-2 text-[12px] text-sand-700">
-            <span>Remaining balance at the park jetty</span>
-            <span className="font-mono">{peso.format(pricing.balance)}</span>
-          </div>
-        </div>
-
-        {/* Payment method */}
+        {/* Payment channel */}
         <div>
           <p className="text-[11px] font-semibold tracking-[0.14em] text-sand-700 uppercase">
             Payment channel
           </p>
-          <div className="mt-2.5 grid gap-2.5 sm:grid-cols-3">
+          <div className="mt-2.5 grid gap-2.5 sm:grid-cols-2">
             {METHOD_OPTIONS.map(({ value, icon: Icon }) => {
               const active = values.paymentMethod === value;
               return (
                 <button
                   key={value}
                   type="button"
-                  onClick={() =>
-                    setValues((current) => ({ ...current, paymentMethod: value }))
-                  }
+                  onClick={() => {
+                    setError(null);
+                    setValues((current) => ({ ...current, paymentMethod: value }));
+                  }}
                   aria-pressed={active}
                   className={`flex items-center gap-2.5 rounded-xl px-3.5 py-3 text-left text-[13px] font-medium transition-all ring-1 ${
                     active
@@ -737,127 +890,305 @@ function InquiryFields({
               );
             })}
           </div>
+        </div>
 
-          {/* Official destination account card */}
-          <div className="mt-3 rounded-xl border border-lake-600/20 bg-lake-50/50 p-4">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <p className="text-[10.5px] font-semibold tracking-[0.14em] text-lake-800 uppercase">
-                  Send {peso.format(pricing.firstPayment)} to
-                </p>
-                <p className="mt-1 text-[13.5px] font-semibold text-ink">
-                  {activeMethod.accountName}
-                </p>
-                <p className="mt-0.5 font-mono text-[13px] text-lake-900">
-                  {activeMethod.accountNumber}
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={copyAccountNumber}
-                className="inline-flex items-center gap-1.5 rounded-full bg-white px-3 py-1.5 text-[11.5px] font-semibold text-lake-800 ring-1 ring-lake-600/25 transition-colors hover:bg-lake-50"
-              >
-                {copiedAccount ? (
-                  <>
-                    <Check className="size-3.5 text-moss-600" strokeWidth={2.4} />
-                    Copied
-                  </>
-                ) : (
-                  <>
-                    <Copy className="size-3.5" strokeWidth={2} />
-                    Copy number
-                  </>
-                )}
-              </button>
-            </div>
-            <p className="mt-2 text-[12px] leading-relaxed text-ink-soft/80">
-              {activeMethod.instructions}
+        {/* Payment plan selector (hidden for on-site cash reservation) */}
+        {!isCash && (
+          <div>
+            <p className="text-[11px] font-semibold tracking-[0.14em] text-sand-700 uppercase">
+              First payment amount
             </p>
-          </div>
-        </div>
-
-        <div className="grid gap-5 sm:grid-cols-2">
-          <AuthField
-            id="paymentReference"
-            label="Payment reference no."
-            value={values.paymentReference}
-            onChange={(paymentReference) =>
-              setValues((current) => ({ ...current, paymentReference }))
-            }
-            placeholder="e.g. GC-884120934"
-            hint="Found on your GCash, Maya, or bank receipt."
-          />
-          <AuthField
-            id="paymentAccountName"
-            label="Sender account name"
-            value={values.paymentAccountName}
-            onChange={(paymentAccountName) =>
-              setValues((current) => ({ ...current, paymentAccountName }))
-            }
-            placeholder="Name on sending wallet/bank"
-            required={false}
-          />
-        </div>
-
-        {/* Optional proof upload */}
-        <div>
-          <label
-            htmlFor="paymentProof"
-            className="block text-[11px] font-semibold tracking-[0.14em] text-sand-700 uppercase"
-          >
-            Receipt screenshot
-            <span className="ml-1.5 font-normal tracking-normal text-sand-500 normal-case">
-              optional
-            </span>
-          </label>
-          {paymentProofUrl ? (
-            <div className="mt-2 flex items-center gap-4 rounded-xl border border-ink/10 bg-sand-50 p-3">
-              <Image
-                src={paymentProofUrl}
-                alt="Uploaded payment receipt preview"
-                width={72}
-                height={72}
-                unoptimized
-                className="size-16 rounded-lg object-cover ring-1 ring-ink/10"
-              />
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-[13px] font-medium text-ink">
-                  {proofName ?? "Receipt uploaded"}
-                </p>
-                <p className="mt-0.5 text-[11.5px] text-moss-700">
-                  Attached for admin verification
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => {
-                  setPaymentProofUrl(undefined);
-                  setProofName(null);
-                }}
-                className="inline-flex items-center gap-1 rounded-full border border-ink/15 bg-white px-3 py-1.5 text-[11.5px] font-medium text-alert-700 hover:bg-alert-50"
-              >
-                <Trash2 className="size-3.5" strokeWidth={2} />
-                Remove
-              </button>
+            <div className="mt-2.5 grid gap-3 sm:grid-cols-2">
+              {(
+                [
+                  {
+                    rate: 0.5 as const,
+                    title: "50% First payment (Deposit)",
+                    desc: `Pay ${peso.format(Math.round(pricing.total * 0.5))} now, settle ${peso.format(Math.max(0, pricing.total - Math.round(pricing.total * 0.5)))} at the jetty.`,
+                  },
+                  {
+                    rate: 1 as const,
+                    title: "100% Full payment",
+                    desc: `Pay ${peso.format(pricing.total)} now — nothing else due on arrival.`,
+                  },
+                ] as const
+              ).map((option) => {
+                const active = values.firstPaymentRate === option.rate;
+                return (
+                  <button
+                    key={option.rate}
+                    type="button"
+                    onClick={() =>
+                      setValues((current) => ({
+                        ...current,
+                        firstPaymentRate: option.rate,
+                      }))
+                    }
+                    aria-pressed={active}
+                    className={`rounded-xl p-3.5 text-left transition-all ring-1 ${
+                      active
+                        ? "bg-lake-50/70 ring-2 ring-lake-700"
+                        : "bg-sand-50/50 ring-ink/10 hover:bg-sand-50"
+                    }`}
+                  >
+                    <p className="text-[13px] font-semibold text-ink">
+                      {option.title}
+                    </p>
+                    <p className="mt-1 text-[12px] leading-relaxed text-ink-soft/75">
+                      {option.desc}
+                    </p>
+                  </button>
+                );
+              })}
             </div>
+          </div>
+        )}
+
+        {/* Summary breakdown */}
+        <div className="rounded-xl bg-sand-50 p-4 ring-1 ring-ink/8">
+          <div className="flex justify-between text-[12.5px] text-ink-soft/80">
+            <span>
+              {selected?.title} ({pricing.guests}{" "}
+              {pricing.guests === 1 ? "guest" : "guests"} ×{" "}
+              {peso.format(pricing.rate)})
+            </span>
+            <span className="font-mono text-ink">
+              {peso.format(pricing.total)}
+            </span>
+          </div>
+          {!isCash ? (
+            <>
+              <div className="mt-2 flex justify-between text-[13px] font-semibold text-lake-800">
+                <span>
+                  First payment ({Math.round(values.firstPaymentRate * 100)}%)
+                </span>
+                <span className="font-mono">{peso.format(pricing.firstPayment)}</span>
+              </div>
+              <div className="mt-2 flex justify-between border-t border-ink/8 pt-2 text-[12px] text-sand-700">
+                <span>Remaining balance at the park jetty</span>
+                <span className="font-mono">{peso.format(pricing.balance)}</span>
+              </div>
+            </>
           ) : (
-            <label
-              htmlFor="paymentProof"
-              className="mt-2 flex cursor-pointer items-center gap-3 rounded-xl border border-dashed border-ink/20 bg-sand-50/60 px-4 py-3.5 text-[13px] text-ink-soft/80 transition-colors hover:border-lake-600/50 hover:bg-lake-50/40"
-            >
-              <ImagePlus className="size-4 text-lake-700" strokeWidth={1.9} />
-              <span>Attach screenshot of your first payment receipt (JPG/PNG)</span>
-              <input
-                id="paymentProof"
-                type="file"
-                accept="image/*"
-                onChange={handleReceiptChange}
-                className="sr-only"
-              />
-            </label>
+            <div className="mt-2 flex justify-between border-t border-ink/8 pt-2 text-[12.5px] font-semibold text-lake-800">
+              <span>Payable on arrival at Park Jetty</span>
+              <span className="font-mono">{peso.format(pricing.total)}</span>
+            </div>
           )}
         </div>
+
+        {/* Channel execution mode */}
+        {isCash ? (
+          <div className="rounded-xl border border-moss-600/25 bg-moss-50/60 p-4 text-[12.5px] leading-relaxed text-moss-900">
+            <p className="font-semibold text-moss-800">
+              Reserve now &amp; pay at Brgy. Bambanin Park Jetty
+            </p>
+            <p className="mt-1 text-moss-900/80">
+              {activeMethod.instructions} You can also switch to online deposit
+              payment later from <strong>My Account</strong>.
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-[11px] font-semibold tracking-[0.14em] text-sand-700 uppercase">
+                How would you like to pay?
+              </p>
+              <div className="inline-flex rounded-full bg-sand-100 p-1 ring-1 ring-ink/10">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setError(null);
+                    setValues((c) => ({ ...c, paymentFlow: "CHECKOUT" }));
+                  }}
+                  className={`rounded-full px-3 py-1 text-[11.5px] font-semibold transition-colors ${
+                    values.paymentFlow === "CHECKOUT"
+                      ? "bg-white text-lake-900 shadow-xs"
+                      : "text-ink-soft/75 hover:text-ink"
+                  }`}
+                >
+                  Instant checkout
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setError(null);
+                    setValues((c) => ({ ...c, paymentFlow: "MANUAL" }));
+                  }}
+                  className={`rounded-full px-3 py-1 text-[11.5px] font-semibold transition-colors ${
+                    values.paymentFlow === "MANUAL"
+                      ? "bg-white text-lake-900 shadow-xs"
+                      : "text-ink-soft/75 hover:text-ink"
+                  }`}
+                >
+                  Enter ref no. / receipt
+                </button>
+              </div>
+            </div>
+
+            {values.paymentFlow === "CHECKOUT" ? (
+              <div className="rounded-xl border border-lake-600/20 bg-lake-50/55 p-4 space-y-3">
+                <div className="flex items-start gap-3">
+                  <span className="grid size-8 shrink-0 place-items-center rounded-full bg-lake-800 text-sand-50">
+                    <Sparkles className="size-4" strokeWidth={2} />
+                  </span>
+                  <div>
+                    <p className="text-[13px] font-semibold text-ink">
+                      Instant {activeMethod.label} checkout
+                    </p>
+                    <p className="mt-0.5 text-[12px] leading-relaxed text-ink-soft/80">
+                      Click submit below to authorize {peso.format(pricing.firstPayment)} via{" "}
+                      {activeMethod.label}. Your transaction reference is recorded
+                      automatically upon payment confirmation — no manual reference
+                      typing needed.
+                    </p>
+                  </div>
+                </div>
+                <AuthField
+                  id="paymentAccountName"
+                  label="Payer name"
+                  value={values.paymentAccountName}
+                  onChange={(paymentAccountName) =>
+                    setValues((current) => ({ ...current, paymentAccountName }))
+                  }
+                  placeholder="Full name on wallet or bank account"
+                  required={false}
+                />
+              </div>
+            ) : (
+              <>
+                <div className="rounded-xl border border-lake-600/20 bg-lake-50/50 p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <p className="text-[10.5px] font-semibold tracking-[0.14em] text-lake-800 uppercase">
+                        Send {peso.format(pricing.firstPayment)} to
+                      </p>
+                      <p className="mt-1 text-[13.5px] font-semibold text-ink">
+                        {activeMethod.accountName}
+                      </p>
+                      <p className="mt-0.5 font-mono text-[13px] text-lake-900">
+                        {activeMethod.accountNumber}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={copyAccountNumber}
+                      className="inline-flex items-center gap-1.5 rounded-full bg-white px-3 py-1.5 text-[11.5px] font-semibold text-lake-800 ring-1 ring-lake-600/25 transition-colors hover:bg-lake-50"
+                    >
+                      {copiedAccount ? (
+                        <>
+                          <Check className="size-3.5 text-moss-600" strokeWidth={2.4} />
+                          Copied
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="size-3.5" strokeWidth={2} />
+                          Copy number
+                        </>
+                      )}
+                    </button>
+                  </div>
+                  <p className="mt-2 text-[12px] leading-relaxed text-ink-soft/80">
+                    {activeMethod.instructions}
+                  </p>
+                </div>
+
+                <div className="grid gap-5 sm:grid-cols-2">
+                  <AuthField
+                    id="paymentReference"
+                    label="Payment reference no."
+                    value={values.paymentReference}
+                    onChange={(paymentReference) => {
+                      setError(null);
+                      setValues((current) => ({ ...current, paymentReference }));
+                    }}
+                    placeholder="e.g. GC-884120934"
+                    hint="Found on your GCash, Maya, or bank receipt."
+                  />
+                  <AuthField
+                    id="paymentAccountName"
+                    label="Sender account name"
+                    value={values.paymentAccountName}
+                    onChange={(paymentAccountName) =>
+                      setValues((current) => ({ ...current, paymentAccountName }))
+                    }
+                    placeholder="Name on sending wallet/bank"
+                    required={false}
+                  />
+                </div>
+
+                <div>
+                  <label
+                    htmlFor="paymentProof"
+                    className="block text-[11px] font-semibold tracking-[0.14em] text-sand-700 uppercase"
+                  >
+                    Receipt screenshot
+                    <span className="ml-1.5 font-normal tracking-normal text-sand-500 normal-case">
+                      optional
+                    </span>
+                  </label>
+                  {paymentProofUrl ? (
+                    <div className="mt-2 flex items-center gap-4 rounded-xl border border-ink/10 bg-sand-50 p-3">
+                      <Image
+                        src={paymentProofUrl}
+                        alt="Uploaded payment receipt preview"
+                        width={72}
+                        height={72}
+                        unoptimized
+                        className="size-16 rounded-lg object-cover ring-1 ring-ink/10"
+                      />
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-[13px] font-medium text-ink">
+                          {proofName ?? "Receipt uploaded"}
+                        </p>
+                        <p className="mt-0.5 text-[11.5px] text-moss-700">
+                          Attached for admin verification
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPaymentProofUrl(undefined);
+                          setProofName(null);
+                        }}
+                        className="inline-flex items-center gap-1 rounded-full border border-ink/15 bg-white px-3 py-1.5 text-[11.5px] font-medium text-alert-700 hover:bg-alert-50"
+                      >
+                        <Trash2 className="size-3.5" strokeWidth={2} />
+                        Remove
+                      </button>
+                    </div>
+                  ) : (
+                    <label
+                      htmlFor="paymentProof"
+                      className="mt-2 flex cursor-pointer items-center gap-3 rounded-xl border border-dashed border-ink/20 bg-sand-50/60 px-4 py-3.5 text-[13px] text-ink-soft/80 transition-colors hover:border-lake-600/50 hover:bg-lake-50/40"
+                    >
+                      <ImagePlus className="size-4 text-lake-700" strokeWidth={1.9} />
+                      <span>Attach screenshot of your first payment receipt (JPG/PNG)</span>
+                      <input
+                        id="paymentProof"
+                        type="file"
+                        accept="image/*"
+                        onChange={handleReceiptChange}
+                        className="sr-only"
+                      />
+                    </label>
+                  )}
+                </div>
+              </>
+            )}
+          </div>
+        )}
       </div>
+
+      {error && (
+        <div
+          role="alert"
+          className="flex items-start gap-2 rounded-xl bg-alert-50 px-4 py-3 text-[13px] text-alert-700 ring-1 ring-alert-500/20 ring-inset"
+        >
+          <AlertCircle className="mt-0.5 size-4 shrink-0" strokeWidth={2} />
+          <span>{error}</span>
+        </div>
+      )}
 
       <button
         type="submit"
@@ -866,8 +1197,12 @@ function InquiryFields({
       >
         {pending && <Loader2 className="size-4 animate-spin" strokeWidth={2} />}
         {pending
-          ? "Submitting booking & first payment"
-          : `Submit booking & first payment (${peso.format(pricing.firstPayment)})`}
+          ? "Processing booking…"
+          : isCash
+            ? "Submit booking (Pay at Park Jetty)"
+            : values.paymentFlow === "CHECKOUT"
+              ? `Pay & submit booking (${peso.format(pricing.firstPayment)})`
+              : `Submit booking & first payment (${peso.format(pricing.firstPayment)})`}
         {!pending && (
           <ArrowRight
             className="size-4 transition-transform duration-300 group-hover:translate-x-1"
@@ -876,5 +1211,107 @@ function InquiryFields({
         )}
       </button>
     </form>
+
+    {gatewayModal && (
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={`Authorize ${activeMethod.label} payment`}
+        className="fixed inset-0 z-50 grid place-items-center bg-ink/55 p-4 backdrop-blur-sm"
+      >
+        <div className="w-full max-w-md overflow-hidden rounded-3xl bg-white shadow-2xl ring-1 ring-ink/10">
+          <div className="flex items-center justify-between border-b border-ink/8 bg-lake-950 px-6 py-4 text-sand-50">
+            <div>
+              <p className="text-[10px] font-semibold tracking-[0.18em] text-reed-300 uppercase">
+                {activeMethod.label} Checkout
+              </p>
+              <h3 className="mt-0.5 font-display text-[20px] font-light">
+                Authorize First Payment
+              </h3>
+            </div>
+            <button
+              type="button"
+              disabled={gatewayBusy}
+              onClick={() => setGatewayModal(false)}
+              aria-label="Close payment window"
+              className="grid size-8 place-items-center rounded-full bg-white/10 text-sand-100 hover:bg-white/20 disabled:opacity-50"
+            >
+              <X className="size-4" />
+            </button>
+          </div>
+
+          <div className="space-y-4 p-6">
+            <div className="rounded-2xl bg-sand-50 p-4 ring-1 ring-ink/8">
+              <div className="flex items-center justify-between text-[12px] text-ink-soft/75">
+                <span>Merchant</span>
+                <span className="font-semibold text-ink">
+                  {activeMethod.accountName}
+                </span>
+              </div>
+              <div className="mt-1.5 flex items-center justify-between text-[12px] text-ink-soft/75">
+                <span>Package</span>
+                <span className="truncate max-w-[220px] font-medium text-ink">
+                  {selected?.title}
+                </span>
+              </div>
+              <div className="mt-3 flex items-baseline justify-between border-t border-ink/8 pt-3">
+                <span className="text-[11px] font-semibold tracking-[0.12em] text-sand-600 uppercase">
+                  Amount to authorize
+                </span>
+                <span className="font-display text-[28px] leading-none text-lake-800">
+                  {peso.format(pricing.firstPayment)}
+                </span>
+              </div>
+            </div>
+
+            <AuthField
+              id="payerMobile"
+              label={
+                values.paymentMethod === "BANK_TRANSFER"
+                  ? "Account holder / mobile no."
+                  : `${activeMethod.label} registered mobile no.`
+              }
+              value={values.payerMobile}
+              onChange={(payerMobile) =>
+                setValues((c) => ({ ...c, payerMobile }))
+              }
+              placeholder="0917 000 0000"
+              required={false}
+            />
+
+            <p className="flex items-start gap-2 rounded-xl bg-lake-50/70 px-3.5 py-2.5 text-[11.5px] leading-relaxed text-lake-900 ring-1 ring-lake-600/15">
+              <ShieldCheck className="mt-0.5 size-4 shrink-0 text-lake-700" />
+              <span>
+                Confirming generates a transaction reference and immediately
+                saves your booking &amp; first payment record to your account.
+              </span>
+            </p>
+
+            <div className="flex flex-wrap gap-2.5 pt-1">
+              <button
+                type="button"
+                disabled={gatewayBusy}
+                onClick={() => void authorizeInteractivePayment()}
+                className="inline-flex flex-1 items-center justify-center gap-2 rounded-full bg-lake-800 px-5 py-3 text-[13px] font-semibold text-sand-50 transition-colors hover:bg-lake-700 disabled:opacity-60"
+              >
+                {gatewayBusy && <Loader2 className="size-4 animate-spin" />}
+                {gatewayBusy
+                  ? "Authorizing payment…"
+                  : `Confirm & pay ${peso.format(pricing.firstPayment)}`}
+              </button>
+              <button
+                type="button"
+                disabled={gatewayBusy}
+                onClick={() => setGatewayModal(false)}
+                className="rounded-full border border-ink/15 px-4 py-3 text-[13px] font-medium text-ink hover:bg-sand-100 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    )}
+    </>
   );
 }

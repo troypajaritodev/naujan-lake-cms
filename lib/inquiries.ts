@@ -30,7 +30,7 @@ export type InquiryStatus =
 /** Who last moved an inquiry — the park through the queue, or the visitor. */
 export type InquiryActor = "visitor" | "park";
 
-export type PaymentMethod = "GCASH" | "MAYA" | "BANK_TRANSFER";
+export type PaymentMethod = "GCASH" | "MAYA" | "BANK_TRANSFER" | "ON_SITE_CASH";
 
 export type PaymentStatus =
   | "UNPAID"
@@ -531,7 +531,19 @@ function readInquiries(): Inquiry[] {
 
 function writeInquiries(inquiries: Inquiry[]) {
   if (!canUseStorage()) return;
-  window.localStorage.setItem(INQUIRIES_KEY, JSON.stringify(inquiries));
+  try {
+    window.localStorage.setItem(INQUIRIES_KEY, JSON.stringify(inquiries));
+  } catch {
+    // Strip embedded receipt images if browser storage quota is tight so the
+    // booking record itself still saves cleanly instead of blocking submission.
+    const slim = inquiries.map((entry) => {
+      if (!entry.paymentProofUrl) return entry;
+      const copy = { ...entry };
+      delete copy.paymentProofUrl;
+      return copy;
+    });
+    window.localStorage.setItem(INQUIRIES_KEY, JSON.stringify(slim));
+  }
 }
 
 const EMPTY: Inquiry[] = [];
@@ -1045,6 +1057,33 @@ export async function cancelInquiry(
   return cancelled;
 }
 
+/**
+ * Permanently remove a booking from the local store. Visitors can delete
+ * bookings belonging to their own email; park admins may delete any record.
+ */
+export async function deleteInquiry(
+  id: string,
+  userEmail: string,
+  options?: { isAdmin?: boolean },
+): Promise<Inquiry> {
+  const normalized = userEmail.trim().toLowerCase();
+  const list = readInquiries();
+  const target = list.find((entry) => entry.id === id);
+
+  if (!target) {
+    throw new InquiryError("We could not find that booking.");
+  }
+  if (!options?.isAdmin && target.userEmail !== normalized) {
+    throw new InquiryError("You can only delete bookings under your own account.");
+  }
+
+  const next = list.filter((entry) => entry.id !== id);
+  writeInquiries(next);
+  emit();
+
+  return target;
+}
+
 export async function getInquiriesFor(email: string): Promise<Inquiry[]> {
   const normalized = email.trim().toLowerCase();
   return readInquiries()
@@ -1069,26 +1108,34 @@ export async function createInquiry(input: InquiryInput): Promise<Inquiry> {
     typeof input.totalAmount === "number" && input.totalAmount >= 0
       ? Math.round(input.totalAmount)
       : ratePerPerson * partySize;
+  const paymentMethod: PaymentMethod | undefined = input.paymentMethod;
+  const isOnSiteCash = paymentMethod === "ON_SITE_CASH";
   const firstPaymentRate = input.firstPaymentRate ?? 0.5;
-  const firstPaymentAmount =
-    typeof input.firstPaymentAmount === "number" && input.firstPaymentAmount >= 0
+  const firstPaymentAmount = isOnSiteCash
+    ? 0
+    : typeof input.firstPaymentAmount === "number" &&
+        input.firstPaymentAmount >= 0
       ? Math.round(input.firstPaymentAmount)
       : Math.round(totalAmount * firstPaymentRate);
   const balanceAmount = Math.max(0, totalAmount - firstPaymentAmount);
-  const paymentReference = cleanText(input.paymentReference ?? "", 64);
+  const paymentReference = isOnSiteCash
+    ? ""
+    : cleanText(input.paymentReference ?? "", 64);
   const paymentAccountName = cleanText(
     input.paymentAccountName ?? input.fullName,
     120,
   );
-  const hasPayment = firstPaymentAmount > 0 && Boolean(paymentReference);
-  const paymentMethod: PaymentMethod | undefined = input.paymentMethod;
+  const hasPayment =
+    !isOnSiteCash && firstPaymentAmount > 0 && Boolean(paymentReference);
   const paymentStatus: PaymentStatus = hasPayment
     ? "PENDING_VERIFICATION"
     : "UNPAID";
 
-  const paymentSummaryNote = hasPayment
-    ? `${Math.round(firstPaymentRate * 100)}% first payment (PHP ${firstPaymentAmount.toLocaleString("en-PH")}) via ${paymentMethod ?? "payment"} · Ref ${paymentReference}`
-    : "Awaiting first payment submission";
+  const paymentSummaryNote = isOnSiteCash
+    ? `Reserved to pay at Park Jetty (PHP ${totalAmount.toLocaleString("en-PH")} total upon arrival)`
+    : hasPayment
+      ? `${Math.round(firstPaymentRate * 100)}% first payment (PHP ${firstPaymentAmount.toLocaleString("en-PH")}) via ${paymentMethod ?? "payment"} · Ref ${paymentReference}`
+      : "Awaiting first payment submission";
 
   const inquiry: Inquiry = {
     ...input,

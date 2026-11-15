@@ -14,8 +14,8 @@ export const metadata: Metadata = {
 const steps = [
   {
     icon: ClipboardCheck,
-    title: "Book & send first payment",
-    body: "Pick a package, date, and party size, then submit your 50% first payment (or full amount) via GCash, Maya, or Bank Transfer.",
+    title: "Book & choose payment",
+    body: "Pick a package, date, and party size, then complete your 50% first payment (or full amount) via instant GCash, Maya, Bank Transfer, or Pay at Park Jetty.",
   },
   {
     icon: Clock3,
@@ -30,17 +30,25 @@ const steps = [
 ];
 
 type InquirePageProps = {
-  searchParams: Promise<{ tour?: string | string[] }>;
+  searchParams: Promise<{
+    tour?: string | string[];
+    checkout?: string | string[];
+  }>;
 };
 
 /** Awaiting `searchParams` suspends, so it is isolated behind a Suspense boundary. */
 async function InquiryPanel({ searchParams }: InquirePageProps) {
-  const { tour } = await searchParams;
+  const { tour, checkout } = await searchParams;
   const tours = await getTours();
 
   return (
     <InquiryForm
       initialTour={typeof tour === "string" ? tour : undefined}
+      initialCheckoutError={
+        checkout === "cancelled"
+          ? "Online payment was cancelled. Choose another channel or retry checkout."
+          : undefined
+      }
       tours={tours}
     />
   );

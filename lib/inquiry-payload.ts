@@ -30,6 +30,7 @@ const VALID_METHODS: readonly PaymentMethod[] = [
   "GCASH",
   "MAYA",
   "BANK_TRANSFER",
+  "ON_SITE_CASH",
 ];
 
 const VALID_PAYMENT_STATUSES: readonly PaymentStatus[] = [

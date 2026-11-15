@@ -121,6 +121,12 @@ export const PAYMENT_METHOD_META: Record<
     accountNumber: "0312-1048-92",
     instructions: "Transfer via InstaPay / PESONet and paste the bank trace or reference number.",
   },
+  ON_SITE_CASH: {
+    label: "Pay at Park Jetty (Cash)",
+    accountName: "Naujan Lake Jetty Cashier",
+    accountNumber: "Brgy. Bambanin Jetty Desk",
+    instructions: "Reserve your slot now and pay the deposit or full tariff in cash at the park jetty upon check-in.",
+  },
 };
 
 export const BOOKING_TRACKER_STEPS: readonly {

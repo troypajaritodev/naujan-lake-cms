@@ -5,6 +5,7 @@ import Image from "next/image";
 import Link from "next/link";
 import {
   AlertCircle,
+  Ban,
   BellRing,
   Check,
   CheckCircle2,
@@ -18,6 +19,7 @@ import {
   Search,
   Send,
   SlidersHorizontal,
+  Trash2,
   X,
 } from "lucide-react";
 import StatCard from "@/components/admin/stat-card";
@@ -27,6 +29,8 @@ import { downloadCsv } from "@/lib/csv";
 import {
   acceptInquiry,
   addInquiryMessage,
+  canCancelInquiry,
+  deleteInquiry,
   getReservedSeatsForDate,
   InquiryError,
   setInquiryStatus,
@@ -212,6 +216,7 @@ export default function AdminInquiriesPage() {
   const [noteDirty, setNoteDirty] = useState(false);
   const [replyDraft, setReplyDraft] = useState("");
   const [replyPending, setReplyPending] = useState(false);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<{
     tone: "ok" | "warn";
     text: string;
@@ -224,9 +229,31 @@ export default function AdminInquiriesPage() {
 
   function openInspector(inquiry: Inquiry) {
     setInspectId(inquiry.id);
+    setConfirmDeleteId(null);
     setNoteDraft(inquiry.adminNote ?? "");
     setNoteDirty(false);
     setReplyDraft("");
+  }
+
+  async function handleDeleteBooking(inquiry: Inquiry) {
+    setPendingId(inquiry.id);
+    setFeedback(null);
+    try {
+      await deleteInquiry(inquiry.id, inquiry.userEmail, { isAdmin: true });
+      setConfirmDeleteId(null);
+      if (inspectId === inquiry.id) setInspectId(null);
+      setFeedback({
+        tone: "ok",
+        text: `Deleted booking ${inquiry.reference} (${inquiry.fullName}) from the queue.`,
+      });
+    } catch {
+      setFeedback({
+        tone: "warn",
+        text: `Could not delete ${inquiry.reference}.`,
+      });
+    } finally {
+      setPendingId(null);
+    }
   }
 
   async function handleAcceptToOnProcess(inquiry: Inquiry, note?: string) {
@@ -1019,6 +1046,35 @@ export default function AdminInquiriesPage() {
                           <Eye className="size-3" />
                           Manage
                         </button>
+                        {confirmDeleteId === inquiry.id ? (
+                          <div className="inline-flex items-center gap-1 rounded-full bg-alert-50 px-2 py-1 ring-1 ring-alert-500/25">
+                            <button
+                              type="button"
+                              disabled={busy}
+                              onClick={() => void handleDeleteBooking(inquiry)}
+                              className="rounded-full bg-alert-700 px-2 py-0.5 text-[10.5px] font-semibold text-white hover:bg-alert-800 disabled:opacity-60"
+                            >
+                              Delete
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setConfirmDeleteId(null)}
+                              className="px-1 text-[10.5px] font-medium text-ink-soft hover:text-ink"
+                            >
+                              Keep
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => setConfirmDeleteId(inquiry.id)}
+                            aria-label={`Delete booking ${inquiry.reference}`}
+                            title="Delete booking"
+                            className="grid size-7 place-items-center rounded-full border border-ink/12 bg-white text-ink-soft/70 transition-colors hover:border-alert-500/35 hover:bg-alert-50 hover:text-alert-700"
+                          >
+                            <Trash2 className="size-3.5" />
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -1335,7 +1391,57 @@ export default function AdminInquiriesPage() {
                         Decline
                       </button>
                     )}
+                    {canCancelInquiry(inspected) && (
+                      <button
+                        type="button"
+                        disabled={pendingId === inspected.id}
+                        onClick={() =>
+                          void changeStatus(inspected, "CANCELLED", noteDraft)
+                        }
+                        className="inline-flex items-center gap-1 rounded-full border border-alert-500/25 bg-white px-3.5 py-1.5 text-[11.5px] font-semibold text-alert-700 hover:bg-alert-50"
+                      >
+                        <Ban className="size-3" />
+                        Cancel booking
+                      </button>
+                    )}
                   </div>
+                </div>
+
+                {/* Permanent delete inside inspector */}
+                <div className="mt-4 border-t border-ink/8 pt-3.5">
+                  {confirmDeleteId === inspected.id ? (
+                    <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-alert-50/75 px-3.5 py-2.5 ring-1 ring-alert-500/25">
+                      <span className="text-[12px] font-medium text-alert-800">
+                        Permanently delete {inspected.reference}?
+                      </span>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          disabled={pendingId === inspected.id}
+                          onClick={() => void handleDeleteBooking(inspected)}
+                          className="rounded-full bg-alert-700 px-3 py-1 text-[11.5px] font-semibold text-white hover:bg-alert-800 disabled:opacity-60"
+                        >
+                          Yes, delete
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setConfirmDeleteId(null)}
+                          className="rounded-full border border-ink/15 bg-white px-3 py-1 text-[11.5px] font-medium text-ink hover:bg-sand-100"
+                        >
+                          Keep
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setConfirmDeleteId(inspected.id)}
+                      className="inline-flex items-center gap-1.5 text-[11.5px] font-semibold text-alert-700 hover:text-alert-800"
+                    >
+                      <Trash2 className="size-3.5" />
+                      Delete booking record permanently
+                    </button>
+                  )}
                 </div>
               </div>
 

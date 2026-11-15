@@ -42,10 +42,9 @@ export default function VisitCta() {
               </h2>
 
               <p className="mt-5 max-w-lg text-[15px] leading-[1.75] text-sand-200/75">
-                Send an inquiry with your preferred date and party size. After
-                the park office confirms boat availability, settle a 30% first
-                payment deposit via GCash, Maya, or Bank Transfer and pay the
-                remaining balance at the park jetty.
+                Send an inquiry with your preferred date and party size. Pay
+                your 50% first payment (or full amount) via GCash, Maya, or Bank
+                Transfer, or reserve to pay at the park jetty on arrival.
               </p>
 
               <div className="mt-9 flex flex-col gap-3 sm:flex-row sm:items-center">
