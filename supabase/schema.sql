@@ -382,23 +382,63 @@ on conflict (slug) do update
   set species_slugs = excluded.species_slugs
   where public.tours.species_slugs = '{}';
 
-insert into public.advisories (id, author_id, title, slug, severity, excerpt, content, published_at)
+insert into public.advisories
+  (id, author_id, title, slug, severity, excerpt, content, published_at, is_active_banner)
 values
   ('a1000000-0000-4000-8000-000000000001', '11111111-1111-4111-8111-111111111111',
    'Migratory waterbirds begin arriving on the eastern marsh', 'waterbird-arrivals-eastern-marsh', 'INFO',
    'Early flocks of egrets and ducks have been recorded ahead of the usual November peak.',
    'Birdwatching boats are advised to keep distance from feeding groups and to keep engines at idle near roosts.',
-   '2026-10-14T08:00:00Z'),
+   '2026-10-14T08:00:00Z', false),
   ('a1000000-0000-4000-8000-000000000002', '11111111-1111-4111-8111-111111111111',
    'Boat speed restricted at the northern river mouths', 'boat-speed-restricted-river-mouths', 'WARNING',
    'Sustained rain has raised water levels and pushed debris into the channels.',
    'Operators must reduce speed and keep to the marked route until the debris clears.',
-   '2026-10-09T08:00:00Z'),
+   '2026-10-09T08:00:00Z', false),
   ('a1000000-0000-4000-8000-000000000003', '11111111-1111-4111-8111-111111111111',
    'Volunteer briefing for the Asian Waterbird Census', 'waterbird-census-volunteer-briefing', 'INFO',
    'Students and researchers joining the January count are invited to the orientation at the park office.',
    'Bring binoculars and a field notebook. The briefing runs 09:00–11:00 at the protected area office.',
-   '2026-09-28T08:00:00Z')
+   '2026-09-28T08:00:00Z', false),
+  -- The demo build shows this closure in the site-wide banner. Without the row
+  -- here, applying the schema would silently drop the banner: the table is no
+  -- longer empty, so `lib/advisories.ts` stops falling back to its seeds.
+  ('a1000000-0000-4000-8000-000000000004', '11111111-1111-4111-8111-111111111111',
+   'Boat operations suspended under a gale warning', 'gale-warning-boat-suspension', 'CRITICAL',
+   'PAGASA has raised a gale warning for the Naujan coast. All boat tours and lake crossings are suspended until the warning is lifted.',
+   'The park office has suspended all boat departures after PAGASA raised a gale warning for the Oriental Mindoro coast. This covers guided tours, research crossings and private landings.
+
+The shoreline trail and the viewing deck stay open while conditions allow. Do not move beyond the marked barrier at the jetty.
+
+The suspension is reviewed every morning at 6:00 AM. Bookings already confirmed are moved to the next safe departure at no extra cost.',
+   '2026-11-09T08:00:00Z', true),
+  ('a1000000-0000-4000-8000-000000000005', '11111111-1111-4111-8111-111111111111',
+   'Reed beds closed to landing during the nesting season', 'reed-bed-nesting-closure', 'WARNING',
+   'The eastern reed beds are closed to landings while Philippine duck and purple heron are nesting. Boats may pass on the marked channel only.',
+   'Philippine duck — the park''s flagship species and a Philippine endemic — nests in the eastern reed beds from September through December. Purple heron nest in the same stand.
+
+Landing, dragging boats onto the vegetation or pushing through the reeds destroys nests that are effectively invisible from the water. A single landing can flatten several.
+
+The marked channel through the eastern marsh stays open. The closure applies to landings and to any boat entering the vegetation, including kayaks and paddle craft.',
+   '2026-09-12T08:00:00Z', false),
+  ('a1000000-0000-4000-8000-000000000006', '11111111-1111-4111-8111-111111111111',
+   'Fishpen harvest schedule for the lakeside operators', 'fishpen-harvest-schedule', 'INFO',
+   'Registered operators harvest the shallow pens on a rotating schedule through September. Boat traffic at the southern landing will be heavier on those days.',
+   'The registered lakeside operators harvest the shallow pens on a rotating schedule through September, with landings concentrated at the southern jetty.
+
+Visitor boats are not excluded, but the landing area will be busy and parking limited on harvest days. Allow extra time before a morning departure.
+
+Buying fish directly at the landing is permitted. The park office asks that visitors do not enter the pens or walk on the netting.',
+   '2026-08-30T08:00:00Z', false),
+  ('a1000000-0000-4000-8000-000000000007', '11111111-1111-4111-8111-111111111111',
+   'Shoreline trail bridge under repair until November', 'trail-bridge-repair', 'WARNING',
+   'The timber bridge on the shoreline trail is being replaced. The research trek is rerouted onto the service road for the rest of the season.',
+   'The timber bridge carrying the shoreline trail over the western inlet has reached the end of its service life. Replacement work started this month and runs until the end of November.
+
+The educational research trek is rerouted onto the service road for the duration — a slightly longer walk with no shade in the middle section.
+
+The birdwatching and sunrise boat tours are unaffected, as neither uses the trail.',
+   '2026-08-14T08:00:00Z', false)
 on conflict (slug) do nothing;
 
 insert into public.tour_inquiries
