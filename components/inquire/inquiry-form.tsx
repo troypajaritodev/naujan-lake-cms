@@ -458,8 +458,8 @@ function InquiryFields({
       )}
 
       {/* Step 1: Trip & Guest details */}
-      <div className="space-y-5 rounded-2xl bg-white p-6 ring-1 ring-ink/10 sm:p-7">
-        <div className="flex items-center justify-between gap-2 border-b border-ink/8 pb-4">
+      <div className="surface-card space-y-5 rounded-2xl p-6 ring-1 ring-ink/10 sm:p-7">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-ink/8 pb-4">
           <div>
             <p className="text-[10px] font-semibold tracking-[0.18em] text-sand-600 uppercase">
               Step 01
@@ -469,9 +469,14 @@ function InquiryFields({
             </h2>
           </div>
           {selected && (
-            <span className="rounded-full bg-lake-50 px-3 py-1 font-mono text-[11.5px] font-medium text-lake-800 ring-1 ring-lake-600/20">
-              {peso.format(selected.ratePerPerson)} / guest
-            </span>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="rounded-full bg-sand-100 px-3 py-1 text-[11px] font-medium text-sand-800">
+                {selected.duration} · {selected.departure}
+              </span>
+              <span className="rounded-full bg-lake-50 px-3 py-1 font-mono text-[11.5px] font-medium text-lake-800 ring-1 ring-lake-600/20">
+                {peso.format(selected.ratePerPerson)} / guest
+              </span>
+            </div>
           )}
         </div>
 
@@ -607,7 +612,7 @@ function InquiryFields({
       </div>
 
       {/* Step 2: First Payment */}
-      <div className="space-y-5 rounded-2xl bg-white p-6 ring-1 ring-ink/10 sm:p-7">
+      <div className="surface-card space-y-5 rounded-2xl p-6 ring-1 ring-ink/10 sm:p-7">
         <div className="flex flex-wrap items-start justify-between gap-3 border-b border-ink/8 pb-4">
           <div>
             <p className="flex items-center gap-1.5 text-[10px] font-semibold tracking-[0.18em] text-lake-700 uppercase">

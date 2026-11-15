@@ -1000,23 +1000,44 @@ export default function AdminInquiriesPage() {
           className="fixed inset-0 z-50 flex justify-end bg-ink/50 backdrop-blur-sm"
         >
           <div className="flex h-full w-full max-w-xl flex-col overflow-y-auto bg-sand-50 shadow-2xl">
-            <div className="sticky top-0 z-10 flex items-center justify-between border-b border-ink/10 bg-white px-6 py-4">
-              <div>
-                <p className="font-mono text-[11.5px] text-lake-700">
-                  {inspected.reference}
-                </p>
-                <h2 className="mt-0.5 font-display text-[20px] text-ink">
+            <div className="sticky top-0 z-10 flex flex-wrap items-center justify-between gap-3 border-b border-ink/10 bg-white/95 px-6 py-4 backdrop-blur-md">
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="font-mono text-[11.5px] font-medium text-lake-700">
+                    {inspected.reference}
+                  </p>
+                  <span
+                    className={`rounded-full px-2 py-0.5 text-[9.5px] font-semibold uppercase ring-1 ring-inset ${
+                      INQUIRY_STATUS_META[inspected.status].chip
+                    }`}
+                  >
+                    {INQUIRY_STATUS_META[inspected.status].label}
+                  </span>
+                </div>
+                <h2 className="mt-0.5 truncate font-display text-[20px] text-ink">
                   {inspected.tourTitle}
                 </h2>
               </div>
-              <button
-                type="button"
-                onClick={() => setInspectId(null)}
-                aria-label="Close booking inspector"
-                className="grid size-9 place-items-center rounded-full border border-ink/12 hover:bg-sand-100"
-              >
-                <X className="size-4" />
-              </button>
+              <div className="flex items-center gap-2">
+                {inspected.status === "PENDING" && (
+                  <button
+                    type="button"
+                    disabled={pendingId === inspected.id}
+                    onClick={() => void handleAcceptToOnProcess(inspected, noteDraft)}
+                    className="inline-flex items-center gap-1.5 rounded-full bg-lake-800 px-3.5 py-1.5 text-[11.5px] font-semibold text-sand-50 hover:bg-lake-700 disabled:opacity-60"
+                  >
+                    Accept → On Process
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setInspectId(null)}
+                  aria-label="Close booking inspector"
+                  className="grid size-9 place-items-center rounded-full border border-ink/12 hover:bg-sand-100"
+                >
+                  <X className="size-4" />
+                </button>
+              </div>
             </div>
 
             <div className="space-y-5 p-6">

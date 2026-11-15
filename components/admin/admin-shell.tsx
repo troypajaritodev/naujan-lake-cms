@@ -135,10 +135,10 @@ export default function AdminShell({ children }: { children: ReactNode }) {
           href={item.href}
           onClick={onNavigate}
           aria-current={isActive ? "page" : undefined}
-          className={`group flex shrink-0 items-center gap-3 rounded-xl px-3 py-2.5 transition-colors ${
+          className={`group relative flex shrink-0 items-center gap-3 rounded-xl px-3 py-2.5 transition-all ${
             isActive
-              ? "bg-white/10 text-sand-50"
-              : "text-sand-300/70 hover:bg-white/5 hover:text-sand-100"
+              ? "bg-white/12 text-sand-50 ring-1 ring-white/12 ring-inset shadow-[0_8px_20px_-14px_rgba(0,0,0,0.6)]"
+              : "text-sand-300/75 hover:bg-white/6 hover:text-sand-100"
           }`}
         >
           <item.icon
@@ -212,9 +212,13 @@ export default function AdminShell({ children }: { children: ReactNode }) {
   );
 
   return (
-    <div className="min-h-svh bg-sand-100/50 lg:grid lg:grid-cols-[264px_1fr]">
-      <aside className="hidden flex-col bg-lake-950 px-5 py-6 lg:sticky lg:top-0 lg:flex lg:h-svh">
-        <Link href="/" className="flex items-center gap-3">
+    <div className="min-h-svh bg-sand-100/55 lg:grid lg:grid-cols-[268px_1fr]">
+      <aside className="relative hidden flex-col overflow-hidden bg-lake-950 px-5 py-6 lg:sticky lg:top-0 lg:flex lg:h-svh">
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0 bg-[radial-gradient(120%_45%_at_15%_0%,rgba(51,135,133,0.22),transparent_70%)]"
+        />
+        <Link href="/" className="relative flex items-center gap-3">
           <BrandMark className="size-9 bg-white/10" />
           <span className="flex flex-col leading-none">
             <span className="font-display text-[17px] text-sand-50">

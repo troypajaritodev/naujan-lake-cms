@@ -42,7 +42,6 @@ import {
   submitFirstPayment,
   useInquiries,
   type Inquiry,
-  type InquiryStatus,
   type PaymentMethod,
 } from "@/lib/inquiries";
 import {
@@ -436,111 +435,151 @@ function AccountDashboard({ user }: { user: SessionUser }) {
   }
 
   return (
-    <section className="bg-sand-50 pt-28 pb-20 lg:pt-36">
-      <div className="mx-auto w-full max-w-6xl px-5 sm:px-8 lg:px-12">
-        {/* Hero Header */}
-        <div className="flex flex-wrap items-end justify-between gap-6">
-          <div className="flex items-center gap-4">
-            <span
-              aria-hidden="true"
-              className="grid size-14 shrink-0 place-items-center rounded-2xl bg-lake-900 font-display text-[19px] text-sand-50 shadow-[0_10px_30px_-12px_rgba(12,26,23,0.5)]"
-            >
-              {initials(user.fullName)}
-            </span>
-            <div>
-              <p className="text-[11px] font-medium tracking-[0.22em] text-sand-600 uppercase">
-                {user.role === "admin" ? "Park staff account" : "Visitor account"}
-              </p>
-              <h1 className="mt-1.5 font-display text-[clamp(1.8rem,4vw,2.6rem)] leading-tight font-light text-ink">
-                Hello, {user.fullName.split(" ")[0]}.
-              </h1>
-              <p className="mt-1 text-[13px] text-ink-soft/70">
-                {user.email} · member since {formatDate(user.createdAt)}
-              </p>
-            </div>
-          </div>
-
-          <div className="flex flex-wrap gap-2">
-            {user.role === "admin" && (
-              <Link
-                href="/admin"
-                className="inline-flex items-center gap-2 rounded-full border border-ink/15 bg-white px-4 py-2.5 text-[12.5px] font-semibold text-ink transition-colors hover:bg-sand-100"
+    <section className="bg-sand-50 pb-20">
+      {/* Atmospheric Account Hero */}
+      <div className="grain-overlay relative isolate overflow-hidden bg-lake-950 pt-28 pb-20 lg:pt-36 lg:pb-24">
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0 bg-[radial-gradient(85%_70%_at_18%_0%,rgba(51,135,133,0.32),transparent_62%)]"
+        />
+        <div className="relative mx-auto w-full max-w-6xl px-5 sm:px-8 lg:px-12">
+          <div className="flex flex-wrap items-end justify-between gap-6">
+            <div className="flex items-center gap-4 sm:gap-5">
+              <span
+                aria-hidden="true"
+                className="grid size-14 shrink-0 place-items-center rounded-2xl bg-white/10 font-display text-[20px] text-sand-50 ring-1 ring-white/20 backdrop-blur-sm sm:size-16 sm:text-[22px]"
               >
-                <LayoutDashboard
+                {initials(user.fullName)}
+              </span>
+              <div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-white/10 px-2.5 py-0.5 text-[10px] font-semibold tracking-[0.18em] text-reed-200 uppercase ring-1 ring-white/15">
+                    <span className="size-1.5 rounded-full bg-moss-400" />
+                    {user.role === "admin" ? "Park staff account" : "Verified visitor"}
+                  </span>
+                  <span className="text-[11.5px] text-sand-300/75">
+                    Member since {formatDate(user.createdAt)}
+                  </span>
+                </div>
+                <h1 className="mt-2 font-display text-[clamp(1.85rem,4vw,2.65rem)] leading-tight font-light text-sand-50">
+                  Hello, {user.fullName.split(" ")[0]}.
+                </h1>
+                <p className="mt-1 text-[13px] text-sand-200/75">
+                  {user.email}
+                  {user.address ? ` · ${user.address}` : ""}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap gap-2.5">
+              {user.role === "admin" && (
+                <Link
+                  href="/admin"
+                  className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-4 py-2.5 text-[12.5px] font-semibold text-sand-50 backdrop-blur-sm transition-colors hover:bg-white/18"
+                >
+                  <LayoutDashboard
+                    className="size-3.5"
+                    strokeWidth={2}
+                    aria-hidden="true"
+                  />
+                  Admin panel
+                </Link>
+              )}
+              <Link
+                href="/inquire"
+                className="inline-flex items-center gap-2 rounded-full bg-sand-50 px-5 py-2.5 text-[12.5px] font-semibold text-ink shadow-[0_10px_28px_-12px_rgba(0,0,0,0.5)] transition-colors hover:bg-white"
+              >
+                Book a trip
+                <ArrowUpRight
                   className="size-3.5"
-                  strokeWidth={2}
+                  strokeWidth={2.2}
                   aria-hidden="true"
                 />
-                Admin panel
               </Link>
-            )}
-            <Link
-              href="/inquire"
-              className="inline-flex items-center gap-2 rounded-full bg-lake-800 px-4 py-2.5 text-[12.5px] font-semibold text-sand-50 transition-colors hover:bg-lake-700"
-            >
-              Book a trip
-              <ArrowUpRight
-                className="size-3.5"
-                strokeWidth={2.2}
-                aria-hidden="true"
-              />
-            </Link>
+            </div>
           </div>
         </div>
+      </div>
 
+      <div className="relative z-10 mx-auto -mt-10 w-full max-w-6xl px-5 sm:px-8 lg:px-12">
         {/* Summary KPI Strip */}
-        <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <div className="rounded-2xl bg-white p-5 ring-1 ring-ink/8">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <button
+            type="button"
+            onClick={() => {
+              setTab("bookings");
+              setFilter("ALL");
+            }}
+            className="surface-card group rounded-2xl p-5 text-left ring-1 ring-ink/10"
+          >
             <p className="flex items-center gap-2 text-[10px] font-semibold tracking-[0.16em] text-sand-600 uppercase">
-              <span className="size-1.5 rounded-full bg-ink/40" />
+              <span className="size-2 rounded-full bg-ink/40 ring-4 ring-ink/10" />
               Total bookings
             </p>
-            <p className="mt-3 font-display text-[30px] leading-none font-light text-ink">
+            <p className="mt-3 font-display text-[32px] leading-none font-light text-ink tabular-nums">
               {stats.total}
             </p>
-            <p className="mt-2 text-[11.5px] text-ink-soft/65">
-              {stats.activeCount} active in tracker
+            <p className="mt-2.5 text-[11.5px] text-ink-soft/65 group-hover:text-lake-700 transition-colors">
+              {stats.activeCount} active in tracker →
             </p>
-          </div>
+          </button>
 
-          <div className="rounded-2xl bg-white p-5 ring-1 ring-ink/8">
+          <button
+            type="button"
+            onClick={() => {
+              setTab("bookings");
+              setFilter("PENDING");
+            }}
+            className="surface-card group rounded-2xl p-5 text-left ring-1 ring-ink/10"
+          >
             <p className="flex items-center gap-2 text-[10px] font-semibold tracking-[0.16em] text-sand-600 uppercase">
-              <span className="size-1.5 rounded-full bg-reed-400" />
+              <span className="size-2 rounded-full bg-reed-400 ring-4 ring-reed-400/20" />
               Pending
             </p>
-            <p className="mt-3 font-display text-[30px] leading-none font-light text-ink">
+            <p className="mt-3 font-display text-[32px] leading-none font-light text-ink tabular-nums">
               {stats.pending}
             </p>
-            <p className="mt-2 text-[11.5px] text-ink-soft/65">
-              Awaiting admin acceptance
+            <p className="mt-2.5 text-[11.5px] text-ink-soft/65 group-hover:text-lake-700 transition-colors">
+              Awaiting admin acceptance →
             </p>
-          </div>
+          </button>
 
-          <div className="rounded-2xl bg-white p-5 ring-1 ring-ink/8">
+          <button
+            type="button"
+            onClick={() => {
+              setTab("bookings");
+              setFilter("ON_PROCESS");
+            }}
+            className="surface-card group rounded-2xl p-5 text-left ring-1 ring-ink/10"
+          >
             <p className="flex items-center gap-2 text-[10px] font-semibold tracking-[0.16em] text-sand-600 uppercase">
-              <span className="size-1.5 rounded-full bg-lake-500" />
+              <span className="size-2 rounded-full bg-lake-500 ring-4 ring-lake-500/15" />
               On Process &amp; Confirmed
             </p>
-            <p className="mt-3 font-display text-[30px] leading-none font-light text-ink">
+            <p className="mt-3 font-display text-[32px] leading-none font-light text-ink tabular-nums">
               {stats.onProcess + stats.confirmed}
             </p>
-            <p className="mt-2 text-[11.5px] text-ink-soft/65">
-              {stats.onProcess} on process · {stats.confirmed} confirmed
+            <p className="mt-2.5 text-[11.5px] text-ink-soft/65 group-hover:text-lake-700 transition-colors">
+              {stats.onProcess} on process · {stats.confirmed} confirmed →
             </p>
-          </div>
+          </button>
 
-          <div className="rounded-2xl bg-white p-5 ring-1 ring-ink/8">
+          <button
+            type="button"
+            onClick={() => setTab("payments")}
+            className="surface-card group rounded-2xl p-5 text-left ring-1 ring-ink/10"
+          >
             <p className="flex items-center gap-2 text-[10px] font-semibold tracking-[0.16em] text-sand-600 uppercase">
-              <span className="size-1.5 rounded-full bg-moss-500" />
+              <span className="size-2 rounded-full bg-moss-500 ring-4 ring-moss-500/15" />
               First payments sent
             </p>
-            <p className="mt-3 font-display text-[30px] leading-none font-light text-ink">
+            <p className="mt-3 font-display text-[32px] leading-none font-light text-ink tabular-nums">
               {peso.format(stats.totalFirstPaid)}
             </p>
-            <p className="mt-2 text-[11.5px] text-ink-soft/65">
-              {stats.verifiedCount} verified by park staff
+            <p className="mt-2.5 text-[11.5px] text-ink-soft/65 group-hover:text-lake-700 transition-colors">
+              {stats.verifiedCount} verified by park staff →
             </p>
-          </div>
+          </button>
         </div>
 
         {/* Section Tabs */}
@@ -680,11 +719,36 @@ function AccountDashboard({ user }: { user: SessionUser }) {
                   const cancelling = cancellingId === inquiry.id;
                   const showTimeline = expandedTimelineId === inquiry.id;
                   const showPayForm = payFormId === inquiry.id;
+                  const lastMessage =
+                    inquiry.messages && inquiry.messages.length > 0
+                      ? inquiry.messages[inquiry.messages.length - 1]
+                      : null;
+                  const hasParkReply = lastMessage?.sender === "park";
+                  const progressPct =
+                    stepIdx < 0
+                      ? 0
+                      : Math.min(
+                          100,
+                          Math.round(
+                            ((stepIdx + 1) / BOOKING_TRACKER_STEPS.length) * 100,
+                          ),
+                        );
+                  const topBorderClass =
+                    inquiry.status === "CONFIRMED" ||
+                    inquiry.status === "COMPLETED"
+                      ? "border-t-[3px] border-t-moss-600"
+                      : inquiry.status === "ON_PROCESS" ||
+                          inquiry.status === "CONTACTED"
+                        ? "border-t-[3px] border-t-lake-600"
+                        : inquiry.status === "DECLINED" ||
+                            inquiry.status === "CANCELLED"
+                          ? "border-t-[3px] border-t-sand-400"
+                          : "border-t-[3px] border-t-reed-400";
 
                   return (
                     <article
                       key={inquiry.id}
-                      className="overflow-hidden rounded-2xl bg-white ring-1 ring-ink/10"
+                      className={`surface-card overflow-hidden rounded-2xl ring-1 ring-ink/10 ${topBorderClass}`}
                     >
                       {/* Top Header Bar */}
                       <div className="flex flex-wrap items-start justify-between gap-4 border-b border-ink/8 px-5 py-4 sm:px-6">
@@ -757,14 +821,35 @@ function AccountDashboard({ user }: { user: SessionUser }) {
                       <div className="space-y-5 p-5 sm:p-6">
                         {/* Visual Booking Tracker */}
                         {stepIdx >= 0 ? (
-                          <div className="rounded-xl bg-sand-50/80 p-4 ring-1 ring-ink/8">
+                          <div className="rounded-xl bg-sand-50/85 p-4 ring-1 ring-ink/8">
                             <div className="flex flex-wrap items-center justify-between gap-2">
-                              <p className="text-[10.5px] font-semibold tracking-[0.14em] text-sand-700 uppercase">
-                                Booking tracker
-                              </p>
+                              <div className="flex items-center gap-2">
+                                <p className="text-[10.5px] font-semibold tracking-[0.14em] text-sand-700 uppercase">
+                                  Booking tracker
+                                </p>
+                                <span className="rounded-full bg-white px-2 py-0.5 font-mono text-[10px] font-semibold text-lake-800 ring-1 ring-ink/10">
+                                  {progressPct}%
+                                </span>
+                              </div>
                               <p className="text-[12px] font-medium text-lake-800">
                                 {statusSummary(inquiry)}
                               </p>
+                            </div>
+
+                            {/* Connected progress bar */}
+                            <div
+                              className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-sand-200"
+                              role="progressbar"
+                              aria-valuenow={progressPct}
+                              aria-valuemin={0}
+                              aria-valuemax={100}
+                            >
+                              <div
+                                className={`h-full rounded-full transition-all duration-500 ${
+                                  stepIdx >= 2 ? "bg-moss-600" : "bg-lake-700"
+                                }`}
+                                style={{ width: `${progressPct}%` }}
+                              />
                             </div>
 
                             <ol className="mt-4 grid gap-3 sm:grid-cols-4">
@@ -1043,6 +1128,12 @@ function AccountDashboard({ user }: { user: SessionUser }) {
                             >
                               <MessageSquareText className="size-3.5 text-lake-700" />
                               Messages ({inquiry.messages?.length ?? 0})
+                              {hasParkReply && (
+                                <span
+                                  className="size-1.5 rounded-full bg-lake-600"
+                                  title="New reply from park desk"
+                                />
+                              )}
                               {openChatId === inquiry.id ? (
                                 <ChevronUp className="size-3.5" />
                               ) : (
@@ -1720,11 +1811,30 @@ function AccountDashboard({ user }: { user: SessionUser }) {
                 </div>
               )}
 
-              <div className="border-t border-ink/8 pt-4 text-[12px] text-ink-soft/80 space-y-1">
-                <p className="font-semibold text-ink">Park Jetty Check-in Checklist</p>
-                <p>• Present this reference code ({passModal.reference}) and a valid ID at the Naujan Park Office.</p>
-                <p>• Arrive at least 15 minutes before departure for ranger briefing and boat manifest check.</p>
-                <p>• Remaining balance of {peso.format(passModal.balanceAmount ?? 0)} is settled upon arrival.</p>
+              {/* Perforated Ticket Divider */}
+              <div className="relative flex items-center py-1" aria-hidden="true">
+                <span className="-ml-8 size-4 rounded-full bg-sand-200/80 ring-1 ring-ink/10" />
+                <div className="flex-1 border-t-2 border-dashed border-sand-300" />
+                <span className="-mr-8 size-4 rounded-full bg-sand-200/80 ring-1 ring-ink/10" />
+              </div>
+
+              <div className="flex flex-wrap items-center justify-between gap-3 text-[12px] text-ink-soft/80">
+                <div className="space-y-1 flex-1 min-w-[220px]">
+                  <p className="font-semibold text-ink">Park Jetty Check-in Checklist</p>
+                  <p>• Present reference ({passModal.reference}) and a valid ID at the Naujan Park Office.</p>
+                  <p>• Arrive at least 15 minutes before departure for ranger briefing and boat manifest.</p>
+                  <p>• Remaining balance of {peso.format(passModal.balanceAmount ?? 0)} settles on arrival.</p>
+                </div>
+                {passModal.paymentStatus === "VERIFIED" && (
+                  <div className="shrink-0 rounded-xl border-2 border-moss-600/35 bg-moss-50 px-3.5 py-2 text-center">
+                    <p className="text-[9px] font-bold tracking-[0.18em] text-moss-700 uppercase">
+                      Deposit Seal
+                    </p>
+                    <p className="mt-0.5 text-[12px] font-semibold text-moss-800">
+                      VERIFIED
+                    </p>
+                  </div>
+                )}
               </div>
 
               <div className="flex items-center justify-end gap-2.5 border-t border-ink/8 pt-4 print:hidden">
