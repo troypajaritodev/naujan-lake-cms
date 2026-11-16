@@ -1,7 +1,16 @@
 import crypto from "node:crypto";
 
-const GHOST_TIMEOUT_MS = 6000;
+const DEFAULT_CONTENT_TIMEOUT_MS = 10_000;
+const DEFAULT_ADMIN_TIMEOUT_MS = 35_000;
+const DEFAULT_WAKE_TIMEOUT_MS = 50_000;
 const META_SCRIPT_ID = "nl-cms-meta";
+
+function resolveTimeoutMs(envKey: string, fallback: number): number {
+  const raw = Number(process.env[envKey]);
+  return Number.isFinite(raw) && raw >= 1000 && raw <= 120_000
+    ? Math.round(raw)
+    : fallback;
+}
 
 export type GhostTag = {
   id?: string;
@@ -136,7 +145,9 @@ export async function ghostContentFetch<T>(
           Accept: "application/json",
           "Accept-Version": "v5.0",
         },
-        signal: AbortSignal.timeout(GHOST_TIMEOUT_MS),
+        signal: AbortSignal.timeout(
+          resolveTimeoutMs("GHOST_TIMEOUT_MS", DEFAULT_CONTENT_TIMEOUT_MS),
+        ),
       },
     );
     if (!response.ok) {
@@ -163,7 +174,7 @@ export type GhostAdminResponse<T> =
 
 export async function ghostAdminFetch<T>(
   endpoint: string,
-  options?: { method?: string; body?: unknown },
+  options?: { method?: string; body?: unknown; timeoutMs?: number },
 ): Promise<GhostAdminResponse<T>> {
   const url = normalizeGhostUrl(process.env.GHOST_URL);
   const adminKey = process.env.GHOST_ADMIN_API_KEY?.trim();
@@ -200,7 +211,10 @@ export async function ghostAdminFetch<T>(
       ...(options?.body !== undefined
         ? { body: JSON.stringify(options.body) }
         : {}),
-      signal: AbortSignal.timeout(GHOST_TIMEOUT_MS),
+      signal: AbortSignal.timeout(
+        options?.timeoutMs ??
+          resolveTimeoutMs("GHOST_ADMIN_TIMEOUT_MS", DEFAULT_ADMIN_TIMEOUT_MS),
+      ),
     });
 
     const payload = (await response.json().catch(() => ({}))) as {
@@ -226,6 +240,18 @@ export async function ghostAdminFetch<T>(
           : "Unable to reach Ghost Admin API.",
     };
   }
+}
+
+/**
+ * Sends one lightweight Admin API request to wake a sleeping Ghost host
+ * (such as Render Free tier) before firing concurrent catalog sync writes.
+ */
+export async function wakeGhostAdmin(): Promise<
+  GhostAdminResponse<{ site?: unknown }>
+> {
+  return ghostAdminFetch<{ site?: unknown }>("site/", {
+    timeoutMs: resolveTimeoutMs("GHOST_WAKE_TIMEOUT_MS", DEFAULT_WAKE_TIMEOUT_MS),
+  });
 }
 
 function constantTimeEquals(a: string, b: string): boolean {

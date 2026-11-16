@@ -25,15 +25,32 @@ Before pointing Vercel at your Supabase project, apply the updated schema (`supa
 
 ## 2. Host Ghost CMS Externally (HTTPS)
 
-Deploy Ghost on a persistent container host (such as Railway, Fly.io, DigitalOcean/VPS, or Ghost(Pro)) rather than Vercel:
+Deploy Ghost on a persistent container host (such as Render Free + external free MySQL 8, Railway, Fly.io, DigitalOcean/VPS, or Ghost(Pro)) rather than Vercel:
 
-- **Public HTTPS URL**: Configure Ghost's external URL over HTTPS (`https://cms.<your-domain>`) and mount persistent storage at `/var/lib/ghost/content` so uploaded images, SQLite/MySQL data, and routes survive restarts.
-- **Security**: Unlike local Docker development (`docker-compose.yml` sets `security__staffDeviceVerification: "false"`), keep staff device verification enabled (`true`) and configure real production SMTP credentials on Ghost so Ghost staff logins and password resets work properly.
+### Option A — Persistent Disk Host (VPS / Railway / Render Paid Starter)
+- **Public HTTPS URL**: Configure Ghost's external URL over HTTPS (`https://cms.<your-domain>`) and mount persistent storage at `/var/lib/ghost/content` (`database__client=sqlite3`, `database__connection__filename=/var/lib/ghost/content/data/ghost.db`).
+
+### Option B — Render Free Tier + Free External MySQL 8 (TiDB Cloud Starter / Aiven)
+Because Render's **Free** Web Service tier has ephemeral disk storage (no Persistent Disk) and sleeps after 15 minutes idle, configure Ghost with an external **MySQL 8** database so posts, users, and API keys never wipe:
+- **Docker Image**: `ghost:5-alpine` (`PORT=2368`, `server__host=0.0.0.0`, `server__port=2368`)
+- **Database env vars on Render**:
+  - `database__client=mysql`
+  - `database__connection__host=<mysql-host>`
+  - `database__connection__port=<mysql-port>` (e.g. `4000` for TiDB Cloud or Aiven port)
+  - `database__connection__user=<mysql-user>`
+  - `database__connection__password=<mysql-password>`
+  - `database__connection__database=<mysql-db>`
+  - `database__connection__ssl__rejectUnauthorized=true`
+- **External images note**: Store custom images via external `https://` URLs (local container disk uploads in `/var/lib/ghost/content/images` reset on Render Free restarts; built-in tour/species photos hosted in Vercel `public/images/` stay permanent).
+- **Cold-start note**: Render Free takes ~30–50s to wake from sleep; the Next.js Admin sync action calls `wakeGhostAdmin()` first and uses a 35s Admin API timeout (`GHOST_ADMIN_TIMEOUT_MS`). Optionally configure an external uptime ping (e.g. every 10–14 min) to keep Ghost warm during active hours.
+
+### Ghost Production Security & Integration Setup
+- **Security**: Unlike local Docker development (`docker-compose.yml` sets `security__staffDeviceVerification: "false"`), keep staff device verification enabled (`true`) and configure real production SMTP credentials on Ghost (`mail__transport=SMTP`, e.g. Resend `smtp.resend.com` port `465`) so Ghost staff logins and password resets work properly.
 - **Content Cleanup**: If you created local draft/test posts (such as test post `gyfyfyt`), delete or archive them in Ghost Studio before pushing or syncing production content.
 - **API Keys**: In Ghost Studio (**Settings → Integrations → Add custom integration**), create an integration for Next.js and copy:
   - Content API key → `GHOST_CONTENT_API_KEY`
   - Admin API key → `GHOST_ADMIN_API_KEY`
-- **Webhook on Ghost**: Add a webhook pointing to:
+- **Webhook on Ghost**: Add webhooks (e.g., `Post published`, `Post updated`, `Post unpublished`, `Post deleted`) pointing to:
   ```text
   https://<your-vercel-domain>/api/webhooks/ghost
   ```

@@ -199,7 +199,7 @@ if (ghostUrl && ghostContentKey) {
       `${ghostUrl}/ghost/api/content/posts/?key=${encodeURIComponent(ghostContentKey)}&limit=all&fields=slug,title`,
       {
         headers: { Accept: "application/json", "Accept-Version": "v5.0" },
-        signal: AbortSignal.timeout(4000),
+        signal: AbortSignal.timeout(10000),
       },
     );
     if (res.ok) {

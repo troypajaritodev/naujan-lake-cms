@@ -5,7 +5,7 @@ import {
   getArchivedAdvisories,
   getSortedAdvisories,
 } from "@/lib/advisories";
-import { getGhostStatus } from "@/lib/ghost";
+import { getGhostStatus, wakeGhostAdmin } from "@/lib/ghost";
 import {
   pushAdvisoryToGhost,
   pushRulesToGhost,
@@ -69,6 +69,17 @@ export async function syncAllToGhostAction(): Promise<GhostBulkSyncResult> {
       failed: 0,
       message:
         "Configure GHOST_URL and GHOST_ADMIN_API_KEY in .env.local before syncing to Ghost CMS.",
+    };
+  }
+
+  // Wake cold-sleeping external Ghost containers (e.g. Render Free) before fan-out writes.
+  const wake = await wakeGhostAdmin();
+  if (!wake.ok) {
+    return {
+      ok: false,
+      pushed: 0,
+      failed: 0,
+      message: `Ghost host did not respond in time: ${wake.error}`,
     };
   }
 
