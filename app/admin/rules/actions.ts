@@ -3,11 +3,17 @@
 import { updateTag } from "next/cache";
 import { updateOverrides } from "@/lib/content-store";
 import {
+  formatGhostSyncSuffix,
+  pushRulesToGhost,
+  pushZonesToGhost,
+} from "@/lib/ghost-cms";
+import {
   lakeZones,
   parkRules,
   type ParkRule,
   type Zone,
 } from "@/lib/guidelines";
+import { getLakeZones, getParkRules } from "@/lib/guidelines-data";
 import { cleanText, toCleanLines } from "@/lib/sanitize";
 import { requireAdminSession } from "@/lib/server-auth";
 
@@ -67,10 +73,11 @@ export async function saveParkRuleAction(
     ...(note ? { note } : {}),
   };
 
+  const baselineRules = await getParkRules();
   let updatedExisting = false;
 
-  await updateOverrides((current) => {
-    const existing = [...(current.guidelines.rules ?? parkRules)];
+  const nextOverrides = await updateOverrides((current) => {
+    const existing = [...(current.guidelines.rules ?? baselineRules)];
     if (
       Number.isInteger(parsedIndex) &&
       parsedIndex >= 0 &&
@@ -88,13 +95,19 @@ export async function saveParkRuleAction(
     };
   });
 
+  const ghostRes = await pushRulesToGhost(
+    nextOverrides.guidelines.rules ?? baselineRules,
+  );
+
   updateTag("guidelines");
 
   return {
     ok: true,
-    message: updatedExisting
-      ? `Updated park rule “${nextRule.title}”. Live on /guidelines.`
-      : `Added park rule “${nextRule.title}” to /guidelines.`,
+    message:
+      (updatedExisting
+        ? `Updated park rule “${nextRule.title}”. Live on /guidelines.`
+        : `Added park rule “${nextRule.title}” to /guidelines.`) +
+      formatGhostSyncSuffix(ghostRes),
   };
 }
 
@@ -105,11 +118,12 @@ export async function deleteParkRuleAction(
     return { ok: false, message: "Park staff access required." };
   }
 
+  const baselineRules = await getParkRules();
   let blocked = false;
   let removedTitle = "";
 
-  await updateOverrides((current) => {
-    const existing = [...(current.guidelines.rules ?? parkRules)];
+  const nextOverrides = await updateOverrides((current) => {
+    const existing = [...(current.guidelines.rules ?? baselineRules)];
     if (existing.length <= 1) {
       blocked = true;
       return current;
@@ -132,13 +146,18 @@ export async function deleteParkRuleAction(
     };
   }
 
+  const ghostRes = removedTitle
+    ? await pushRulesToGhost(nextOverrides.guidelines.rules ?? baselineRules)
+    : { synced: false };
+
   updateTag("guidelines");
 
   return {
     ok: true,
-    message: removedTitle
-      ? `Removed “${removedTitle}” from /guidelines.`
-      : "Rule removed.",
+    message:
+      (removedTitle
+        ? `Removed “${removedTitle}” from /guidelines.`
+        : "Rule removed.") + formatGhostSyncSuffix(ghostRes),
   };
 }
 
@@ -150,10 +169,12 @@ export async function moveParkRuleAction(
     return { ok: false, message: "Park staff access required." };
   }
 
+  const baselineRules = await getParkRules();
   const delta = direction === "up" ? -1 : 1;
+  let moved = false;
 
-  await updateOverrides((current) => {
-    const existing = [...(current.guidelines.rules ?? parkRules)];
+  const nextOverrides = await updateOverrides((current) => {
+    const existing = [...(current.guidelines.rules ?? baselineRules)];
     const target = index + delta;
     if (
       !Number.isInteger(index) ||
@@ -165,6 +186,7 @@ export async function moveParkRuleAction(
       return current;
     }
 
+    moved = true;
     const next = [...existing];
     [next[index], next[target]] = [next[target], next[index]];
     return {
@@ -173,9 +195,18 @@ export async function moveParkRuleAction(
     };
   });
 
+  const ghostRes = moved
+    ? await pushRulesToGhost(nextOverrides.guidelines.rules ?? baselineRules)
+    : { synced: false };
+
   updateTag("guidelines");
 
-  return { ok: true, message: "Updated rule display order on /guidelines." };
+  return {
+    ok: true,
+    message:
+      "Updated rule display order on /guidelines." +
+      formatGhostSyncSuffix(ghostRes),
+  };
 }
 
 export async function saveLakeZoneAction(
@@ -240,10 +271,11 @@ export async function saveLakeZoneAction(
     };
   }
 
+  const baselineZones = await getLakeZones();
   let matched = false;
 
-  await updateOverrides((current) => {
-    const existing = [...(current.guidelines.zones ?? lakeZones)];
+  const nextOverrides = await updateOverrides((current) => {
+    const existing = [...(current.guidelines.zones ?? baselineZones)];
     const idx = existing.findIndex((item) => item.id === zoneId);
     if (idx < 0) return current;
 
@@ -269,11 +301,17 @@ export async function saveLakeZoneAction(
     return { ok: false, message: "Unknown lake zone." };
   }
 
+  const ghostRes = await pushZonesToGhost(
+    nextOverrides.guidelines.zones ?? baselineZones,
+  );
+
   updateTag("guidelines");
 
   return {
     ok: true,
-    message: `Updated “${name}” zoning rules on /guidelines.`,
+    message:
+      `Updated “${name}” zoning rules on /guidelines.` +
+      formatGhostSyncSuffix(ghostRes),
   };
 }
 
@@ -292,13 +330,19 @@ export async function resetGuidelinesAction(
     },
   }));
 
+  const ghostRes =
+    scope === "rules"
+      ? await pushRulesToGhost(parkRules)
+      : await pushZonesToGhost(lakeZones);
+
   updateTag("guidelines");
 
   return {
     ok: true,
     message:
-      scope === "rules"
+      (scope === "rules"
         ? "Restored default park rules on /guidelines."
-        : "Restored default lake zoning framework on /guidelines.",
+        : "Restored default lake zoning framework on /guidelines.") +
+      formatGhostSyncSuffix(ghostRes),
   };
 }

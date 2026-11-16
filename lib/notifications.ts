@@ -14,7 +14,7 @@ import { advisoryDigestEmail } from "@/lib/email-templates";
 
 const BATCH_SIZE = 20;
 
-export type DigestResult = { sent: number; failed: number };
+export type DigestResult = { sent: number; demoLogged: number; failed: number };
 
 export async function dispatchAdvisoryDigest(
   advisory: AdvisoryPreview,
@@ -24,6 +24,7 @@ export async function dispatchAdvisoryDigest(
     .filter(Boolean);
 
   let sent = 0;
+  let demoLogged = 0;
   let failed = 0;
 
   for (let start = 0; start < unique.length; start += BATCH_SIZE) {
@@ -35,11 +36,13 @@ export async function dispatchAdvisoryDigest(
     for (const result of results) {
       if (result.delivered) {
         sent += 1;
+      } else if (result.reason === "demo") {
+        demoLogged += 1;
       } else {
         failed += 1;
       }
     }
   }
 
-  return { sent, failed };
+  return { sent, demoLogged, failed };
 }

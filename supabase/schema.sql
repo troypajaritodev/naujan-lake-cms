@@ -58,6 +58,10 @@ create table if not exists public.users (
     check (char_length(full_name) between 2 and 120)
 );
 
+alter table public.users
+  add column if not exists address           text,
+  add column if not exists emergency_contact text;
+
 comment on table  public.users is 'Visitor and staff accounts. Self-registration always writes role = visitor.';
 comment on column public.users.password_hash is 'Salted SHA-256 digest sha256(email:password); replaced by auth.users.encrypted_password under Supabase Auth.';
 
@@ -173,7 +177,12 @@ alter table public.tour_inquiries
   add column if not exists payment_verified_at  timestamptz,
   add column if not exists admin_note           text,
   add column if not exists timeline             jsonb not null default '[]'::jsonb,
-  add column if not exists messages             jsonb not null default '[]'::jsonb;
+  add column if not exists messages             jsonb not null default '[]'::jsonb,
+  add column if not exists user_email           text,
+  add column if not exists tour_slug            text,
+  add column if not exists tour_title           text,
+  add column if not exists first_payment_rate   numeric(4, 2) not null default 0.5,
+  add column if not exists payment_proof_url    text;
 
 -- 2.6 advisories — park announcements (Module 4)
 create table if not exists public.advisories (
@@ -224,6 +233,13 @@ create table if not exists public.subscribers (
     check (email ~* '^[^@[:space:]]+@[^@[:space:]]+\.[^@[:space:]]{2,}$')
 );
 
+-- 2.8 portal_kv — server-only runtime overrides (CMS drafts/edits on serverless hosts)
+create table if not exists public.portal_kv (
+  key        text primary key,
+  value      jsonb not null default '{}'::jsonb,
+  updated_at timestamptz not null default now()
+);
+
 -- ---------------------------------------------------------------------------
 -- 3. Indexes
 -- ---------------------------------------------------------------------------
@@ -234,6 +250,7 @@ create index if not exists tours_active_idx            on public.tours (is_activ
 create index if not exists tours_species_slugs_idx     on public.tours using gin (species_slugs);
 create index if not exists inquiries_tour_idx          on public.tour_inquiries (tour_id);
 create index if not exists inquiries_user_idx          on public.tour_inquiries (user_id);
+create index if not exists inquiries_user_email_idx    on public.tour_inquiries (user_email);
 create index if not exists inquiries_status_idx        on public.tour_inquiries (status);
 create index if not exists inquiries_created_idx       on public.tour_inquiries (created_at desc);
 create index if not exists inquiries_target_date_idx   on public.tour_inquiries (target_date);
@@ -274,6 +291,11 @@ create trigger inquiries_touch_updated_at
 drop trigger if exists advisories_touch_updated_at on public.advisories;
 create trigger advisories_touch_updated_at
   before update on public.advisories
+  for each row execute function public.touch_updated_at();
+
+drop trigger if exists portal_kv_touch_updated_at on public.portal_kv;
+create trigger portal_kv_touch_updated_at
+  before update on public.portal_kv
   for each row execute function public.touch_updated_at();
 
 -- Automatically mirror new Supabase Auth sign-ups into public.users as visitor
@@ -346,6 +368,7 @@ alter table public.tours          enable row level security;
 alter table public.tour_inquiries enable row level security;
 alter table public.advisories     enable row level security;
 alter table public.subscribers    enable row level security;
+alter table public.portal_kv      enable row level security;
 
 -- users: read your own row, edit your own profile, staff see everyone
 drop policy if exists users_select_self on public.users;
@@ -647,6 +670,10 @@ values
    'Ana Reyes', 'ana.reyes@example.com', '+63 918 442 1180', '2026-11-21', 4,
    'Two of us have binoculars already.', 'CONFIRMED', '2026-11-02T07:40:00Z')
 on conflict (reference_code) do nothing;
+
+update public.tour_inquiries
+set user_email = lower(email)
+where user_email is null;
 
 insert into public.subscribers (email, topics)
 values

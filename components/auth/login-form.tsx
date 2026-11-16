@@ -38,8 +38,15 @@ export default function LoginForm() {
 
     const params = new URLSearchParams(window.location.search);
     const target = params.get("next");
+    const safeNext =
+      target &&
+      target.startsWith("/") &&
+      !target.startsWith("//") &&
+      !target.startsWith("/\\")
+        ? target
+        : null;
     return {
-      next: target && target.startsWith("/") ? target : null,
+      next: safeNext,
       signedOut: params.get("signedOut") === "1",
     };
   });

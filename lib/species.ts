@@ -14,6 +14,11 @@ import {
   mergeSpecies,
   readOverrides,
 } from "@/lib/content-store";
+import {
+  dedupeBySlug,
+  fetchGhostSpecies,
+  mergeGhostBase,
+} from "@/lib/ghost-cms";
 import { getSupabaseClient, type Tables } from "@/lib/supabase";
 import { fetchOrFallback, queryError } from "@/lib/supabase/query";
 import { photoFor } from "@/lib/species-photos";
@@ -402,30 +407,46 @@ export async function getWildlifeGroups(): Promise<WildlifeGroup[]> {
   );
 }
 
-/** Every catalogued species, across all groups, merged with staff overrides. */
+async function baseSpeciesPartition() {
+  "use cache";
+  cacheLife("hours");
+  cacheTag("species", "ghost");
+
+  const [fallbackBase, ghost] = await Promise.all([
+    readBaseSpecies(),
+    fetchGhostSpecies(),
+  ]);
+  return mergeGhostBase(fallbackBase, ghost);
+}
+
+/** Every catalogued species, across all groups, merged with Ghost and staff overrides. */
 export async function getSpecies(): Promise<Species[]> {
   "use cache";
   cacheLife("hours");
-  cacheTag("species");
+  cacheTag("species", "ghost");
 
-  const [base, overrides] = await Promise.all([
-    readBaseSpecies(),
+  const [{ active, draftedSlugs }, overrides] = await Promise.all([
+    baseSpeciesPartition(),
     readOverrides(),
   ]);
-  return mergeSpecies(base, overrides).map(withPhoto);
+  return mergeSpecies(active, overrides)
+    .filter((entry) => !draftedSlugs.has(entry.slug))
+    .map(withPhoto);
 }
 
-    /** Species taken off the public catalogue, listed for staff to restore. */
-    export async function getArchivedSpecies(): Promise<Species[]> {
-      "use cache";
-      cacheLife("hours");
-      cacheTag("species");
+/** Species taken off the public catalogue, listed for staff to restore. */
+export async function getArchivedSpecies(): Promise<Species[]> {
+  "use cache";
+  cacheLife("hours");
+  cacheTag("species", "ghost");
 
-const [base, overrides] = await Promise.all([
-  readBaseSpecies(),
-  readOverrides(),
-]);
-return archivedSpecies(base, overrides).map(withPhoto);
+  const [{ active, drafted }, overrides] = await Promise.all([
+    baseSpeciesPartition(),
+    readOverrides(),
+  ]);
+  return dedupeBySlug(drafted, archivedSpecies(active, overrides)).map(
+    withPhoto,
+  );
 }
 
 /** Species grouped in taxonomy order, ready for section rendering. */
@@ -445,7 +466,7 @@ export async function getSpeciesByGroup(): Promise<
 > {
   "use cache";
   cacheLife("hours");
-  cacheTag("species", "categories");
+  cacheTag("species", "categories", "ghost");
 
   const [groups, entries] = await Promise.all([
     getWildlifeGroups(),
@@ -461,7 +482,7 @@ export async function getSpeciesBySlug(
 ): Promise<Species | undefined> {
   "use cache";
   cacheLife("hours");
-  cacheTag("species", "categories");
+  cacheTag("species", "categories", "ghost");
 
   const entries = await getSpecies();
   return entries.find((entry) => entry.slug === slug);
@@ -474,7 +495,7 @@ export async function getRelatedSpecies(
 ): Promise<Species[]> {
   "use cache";
   cacheLife("hours");
-  cacheTag("species", "categories");
+  cacheTag("species", "categories", "ghost");
 
   const entries = await getSpecies();
   const current = entries.find((entry) => entry.slug === slug);

@@ -20,25 +20,25 @@
  * overrides yet", which is the state every fresh checkout is in.
  */
 
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
-import path from "node:path";
 import type { Advisory } from "@/lib/advisories";
 import type { ParkRule, Zone } from "@/lib/guidelines";
+import { JsonFileStore } from "@/lib/json-store";
 import type { Species } from "@/lib/species-meta";
+import { getSupabaseAdminClient } from "@/lib/supabase/admin";
+import type { Json } from "@/lib/supabase/types";
 import type { Tour } from "@/lib/tours";
 
-const STORE_DIR = path.join(process.cwd(), ".data");
-const STORE_FILE = path.join(STORE_DIR, "content.json");
-const TEMP_FILE = `${STORE_FILE}.tmp`;
+/** Patch map where `null` deletes an optional property on merge. */
+export type PatchFields<T> = { [K in keyof T]?: T[K] | null };
 
 /** Fields staff may change on an existing record. */
-export type AdvisoryPatch = Partial<Omit<Advisory, "slug">>;
-export type TourPatch = Partial<Omit<Tour, "slug">>;
-export type SpeciesPatch = Partial<Omit<Species, "slug">>;
+export type AdvisoryPatch = PatchFields<Omit<Advisory, "slug">>;
+export type TourPatch = PatchFields<Omit<Tour, "slug">>;
+export type SpeciesPatch = PatchFields<Omit<Species, "slug">>;
 
 type CollectionOverride<T extends { slug: string }> = {
   created: T[];
-  edited: Record<string, Partial<Omit<T, "slug">>>;
+  edited: Record<string, PatchFields<Omit<T, "slug">>>;
   archived: string[];
 };
 
@@ -79,7 +79,7 @@ function normaliseCollection<T extends { slug: string }>(
   return {
     created: Array.isArray(section.created) ? (section.created as T[]) : [],
     edited: isRecord(section.edited)
-      ? (section.edited as Record<string, Partial<Omit<T, "slug">>>)
+      ? (section.edited as Record<string, PatchFields<Omit<T, "slug">>>)
       : {},
     archived: Array.isArray(section.archived)
       ? (section.archived as string[])
@@ -121,46 +121,104 @@ function normalise(raw: unknown): ContentOverrides {
   };
 }
 
-export async function readOverrides(): Promise<ContentOverrides> {
+const PORTAL_KV_OVERRIDES_KEY = "content_overrides";
+
+const contentStore = new JsonFileStore<ContentOverrides>({
+  filename: "content.json",
+  fallbackSubdir: "naujan-lake-content",
+  normalize: normalise,
+});
+
+let kvWriteQueue: Promise<unknown> = Promise.resolve();
+
+async function readOverridesFromSupabase(): Promise<ContentOverrides | null> {
+  const admin = getSupabaseAdminClient();
+  if (!admin) return null;
+
   try {
-    const raw = await readFile(STORE_FILE, "utf8");
-    return normalise(JSON.parse(raw));
-  } catch (error) {
-    const code = (error as NodeJS.ErrnoException).code;
-    if (code !== "ENOENT" && process.env.NODE_ENV !== "production") {
-      console.warn(
-        "[content-store] could not read .data/content.json — starting empty.",
-        error instanceof Error ? error.message : error,
-      );
-    }
-    return emptyOverrides();
+    const { data, error } = await admin
+      .from("portal_kv")
+      .select("value")
+      .eq("key", PORTAL_KV_OVERRIDES_KEY)
+      .maybeSingle();
+
+    if (error) return null;
+    return normalise(data?.value ?? null);
+  } catch {
+    return null;
   }
+}
+
+async function writeOverridesToSupabase(next: ContentOverrides): Promise<boolean> {
+  const admin = getSupabaseAdminClient();
+  if (!admin) return false;
+
+  try {
+    const { error } = await admin.from("portal_kv").upsert(
+      {
+        key: PORTAL_KV_OVERRIDES_KEY,
+        value: next as unknown as Json,
+      },
+      { onConflict: "key" },
+    );
+    return !error;
+  } catch {
+    return false;
+  }
+}
+
+export async function readOverrides(): Promise<ContentOverrides> {
+  const remote = await readOverridesFromSupabase();
+  if (remote !== null) return remote;
+  return contentStore.read();
 }
 
 export async function writeOverrides(
   next: ContentOverrides,
 ): Promise<ContentOverrides> {
-  await mkdir(STORE_DIR, { recursive: true });
-  await writeFile(TEMP_FILE, `${JSON.stringify(next, null, 2)}\n`, "utf8");
-  await rename(TEMP_FILE, STORE_FILE);
-  return next;
+  const persistedRemotely = await writeOverridesToSupabase(next);
+  if (persistedRemotely) return next;
+  return contentStore.withLock(() => ({ next, result: next }));
 }
 
-/** Read-modify-write, so two panels open in different tabs cannot clobber. */
+/** Serialized read-modify-write so concurrent admin saves cannot clobber each other. */
 export async function updateOverrides(
   mutate: (current: ContentOverrides) => ContentOverrides,
 ): Promise<ContentOverrides> {
-  const current = await readOverrides();
-  return writeOverrides(mutate(current));
+  const admin = getSupabaseAdminClient();
+  if (admin) {
+    const run = kvWriteQueue.then(async () => {
+      const current = await readOverrides();
+      const next = mutate(current);
+      const saved = await writeOverridesToSupabase(next);
+      if (saved) return next;
+      return contentStore.withLock(() => ({ next, result: next }));
+    });
+    kvWriteQueue = run.catch(() => undefined);
+    return run;
+  }
+
+  return contentStore.withLock((current) => {
+    const next = mutate(current);
+    return { next, result: next };
+  });
 }
 
 function applyPatch<T extends { slug: string }>(
   record: T,
-  patch: Partial<Omit<T, "slug">> | undefined,
+  patch: PatchFields<Omit<T, "slug">> | undefined,
 ): T {
   if (!patch) return record;
-  // `slug` is the key and is never part of a patch, so a spread is safe.
-  return { ...record, ...patch, slug: record.slug };
+  const merged: Record<string, unknown> = { ...record };
+  for (const [key, value] of Object.entries(patch)) {
+    if (key === "slug") continue;
+    if (value === null) {
+      delete merged[key];
+    } else if (value !== undefined) {
+      merged[key] = value;
+    }
+  }
+  return merged as T;
 }
 
 function mergeCollection<T extends { slug: string }>(

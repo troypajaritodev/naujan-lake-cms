@@ -934,11 +934,16 @@ function AccountDashboard({ user }: { user: SessionUser }) {
 
                         <div className="text-left sm:text-right">
                           <p className="text-[10px] font-semibold tracking-[0.14em] text-sand-600 uppercase">
-                            Total package tariff
+                            Total booking amount
                           </p>
                           <p className="mt-1 font-display text-[24px] leading-none text-ink">
                             {peso.format(inquiry.totalAmount ?? 0)}
                           </p>
+                          {(inquiry.facilitationFee ?? 0) > 0 && (
+                            <p className="mt-1 text-[11px] text-sand-600">
+                              Incl. {peso.format(inquiry.facilitationFee ?? 0)} facilitation fee
+                            </p>
+                          )}
                         </div>
                       </div>
 

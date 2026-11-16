@@ -9,8 +9,11 @@ import {
   inquiryOnProcessEmail,
 } from "@/lib/email-templates";
 import type { InquiryActor, InquiryStatus } from "@/lib/inquiries";
-import { parseInquiryPayload } from "@/lib/inquiry-payload";
 import { getServerSession } from "@/lib/server-auth";
+import {
+  getServerInquiryById,
+  getServerInquiryByRef,
+} from "@/lib/server-inquiries";
 
 /**
  * Emails the visitor (or the park, for a withdrawal) when a request changes
@@ -86,7 +89,14 @@ export async function POST(request: Request) {
     );
   }
 
-  const inquiry = parseInquiryPayload(payload);
+  const id = typeof payload.id === "string" ? payload.id.trim() : "";
+  const reference =
+    typeof payload.reference === "string" ? payload.reference.trim() : "";
+
+  const inquiry =
+    (id ? await getServerInquiryById(id) : null) ??
+    (reference ? await getServerInquiryByRef(reference) : null);
+
   if (!inquiry || !isNotifiableStatus(status)) {
     return NextResponse.json(
       { error: "Incomplete status update." },

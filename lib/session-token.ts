@@ -14,22 +14,38 @@ export type SessionTokenPayload = {
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 
-function getSigningSecret(): string {
+function getSigningSecret(): string | null {
   const configured = process.env.AUTH_SESSION_SECRET?.trim();
   if (configured) return configured;
 
-  const fallbackParts = [
-    process.env.RESEND_API_KEY?.trim() ?? "",
+  const serverOnlyParts = [
+    process.env.SUPABASE_SERVICE_ROLE_KEY?.trim() ?? "",
     process.env.PAYMONGO_SECRET_KEY?.trim() ?? "",
-    process.env.NEXT_PUBLIC_SUPABASE_URL?.trim() ?? "naujan-lake-local",
-  ].join("|");
-  return `nl-session-fallback:${fallbackParts}`;
+    process.env.RESEND_API_KEY?.trim() ?? "",
+  ].filter(Boolean);
+
+  if (serverOnlyParts.length > 0) {
+    return `nl-session-fallback:${serverOnlyParts.join("|")}`;
+  }
+
+  // Never trust a hardcoded secret in production; fail closed when unconfigured.
+  if (process.env.NODE_ENV === "production") {
+    return null;
+  }
+
+  return "nl-dev-only-session-secret";
 }
 
-async function getHmacKey(usage: KeyUsage[]): Promise<CryptoKey> {
+async function getHmacKey(
+  usage: KeyUsage[],
+  domain = "session",
+): Promise<CryptoKey | null> {
+  const secret = getSigningSecret();
+  if (!secret) return null;
+  const material = domain === "session" ? secret : `${domain}:${secret}`;
   return crypto.subtle.importKey(
     "raw",
-    encoder.encode(getSigningSecret()),
+    encoder.encode(material),
     { name: "HMAC", hash: "SHA-256" },
     false,
     usage,
@@ -61,15 +77,18 @@ function fromBase64Url(input: string): Uint8Array | null {
   }
 }
 
-export async function signSessionToken(
-  payload: Omit<SessionTokenPayload, "exp">,
+/** Sign an arbitrary JSON payload with HMAC-SHA256 using Web Crypto. */
+export async function signHmacJson(
+  payload: unknown,
+  domain = "session",
 ): Promise<string> {
-  const fullPayload: SessionTokenPayload = {
-    ...payload,
-    exp: Math.floor(Date.now() / 1000) + SESSION_TTL_SECONDS,
-  };
-  const encodedPayload = toBase64Url(encoder.encode(JSON.stringify(fullPayload)));
-  const key = await getHmacKey(["sign"]);
+  const key = await getHmacKey(["sign"], domain);
+  if (!key) {
+    throw new Error(
+      "AUTH_SESSION_SECRET (or a server secret) must be configured in production.",
+    );
+  }
+  const encodedPayload = toBase64Url(encoder.encode(JSON.stringify(payload)));
   const signature = await crypto.subtle.sign(
     "HMAC",
     key,
@@ -78,9 +97,11 @@ export async function signSessionToken(
   return `${encodedPayload}.${toBase64Url(new Uint8Array(signature))}`;
 }
 
-export async function verifySessionToken(
+/** Verify an HMAC-SHA256 signed JSON token; returns null on invalid signature or format. */
+export async function verifyHmacJson(
   token: string | undefined | null,
-): Promise<SessionTokenPayload | null> {
+  domain = "session",
+): Promise<Record<string, unknown> | null> {
   if (!token || typeof token !== "string") return null;
 
   const dot = token.indexOf(".");
@@ -92,7 +113,9 @@ export async function verifySessionToken(
   const payloadBytes = fromBase64Url(encodedPayload);
   if (!sigBytes || !payloadBytes) return null;
 
-  const key = await getHmacKey(["verify"]);
+  const key = await getHmacKey(["verify"], domain);
+  if (!key) return null;
+
   const sigCopy = new Uint8Array(sigBytes.length);
   sigCopy.set(sigBytes);
   const valid = await crypto.subtle.verify(
@@ -104,26 +127,48 @@ export async function verifySessionToken(
   if (!valid) return null;
 
   try {
-    const parsed = JSON.parse(decoder.decode(payloadBytes)) as Partial<SessionTokenPayload>;
-    if (
-      !parsed.id ||
-      !parsed.email ||
-      (parsed.role !== "admin" && parsed.role !== "visitor") ||
-      typeof parsed.exp !== "number"
-    ) {
+    const parsed: unknown = JSON.parse(decoder.decode(payloadBytes));
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
       return null;
     }
-    if (parsed.exp <= Math.floor(Date.now() / 1000)) {
-      return null;
-    }
-    return {
-      id: parsed.id,
-      email: parsed.email,
-      role: parsed.role,
-      fullName: parsed.fullName ?? parsed.email,
-      exp: parsed.exp,
-    };
+    return parsed as Record<string, unknown>;
   } catch {
     return null;
   }
+}
+
+export async function signSessionToken(
+  payload: Omit<SessionTokenPayload, "exp">,
+): Promise<string> {
+  const fullPayload: SessionTokenPayload = {
+    ...payload,
+    exp: Math.floor(Date.now() / 1000) + SESSION_TTL_SECONDS,
+  };
+  return signHmacJson(fullPayload, "session");
+}
+
+export async function verifySessionToken(
+  token: string | undefined | null,
+): Promise<SessionTokenPayload | null> {
+  const parsed = (await verifyHmacJson(token, "session")) as Partial<SessionTokenPayload> | null;
+  if (!parsed) return null;
+
+  if (
+    !parsed.id ||
+    !parsed.email ||
+    (parsed.role !== "admin" && parsed.role !== "visitor") ||
+    typeof parsed.exp !== "number"
+  ) {
+    return null;
+  }
+  if (parsed.exp <= Math.floor(Date.now() / 1000)) {
+    return null;
+  }
+  return {
+    id: parsed.id,
+    email: parsed.email,
+    role: parsed.role,
+    fullName: parsed.fullName ?? parsed.email,
+    exp: parsed.exp,
+  };
 }

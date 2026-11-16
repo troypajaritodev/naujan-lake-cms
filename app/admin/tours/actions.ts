@@ -15,6 +15,11 @@
 
 import { updateTag } from "next/cache";
 import { readOverrides, updateOverrides } from "@/lib/content-store";
+import {
+  formatGhostSyncSuffix,
+  pushTourToGhost,
+  syncGhostStatusOrUpsert,
+} from "@/lib/ghost-cms";
 import { cleanText, slugify, toCleanLines } from "@/lib/sanitize";
 import { requireAdminSession } from "@/lib/server-auth";
 import {
@@ -105,7 +110,7 @@ export async function saveTourAction(
   const rate = wholeNumber(field(formData, "ratePerPerson", 12));
   const capacity = wholeNumber(field(formData, "maxCapacity", 4));
 
-  if (isCreate && title.length < 4) {
+  if (title.length < 4) {
     return {
       ok: false,
       field: "title",
@@ -222,12 +227,16 @@ export async function saveTourAction(
       },
     }));
 
+    const ghostRes = await pushTourToGhost(created, "published");
+
     updateTag("tours");
 
     return {
       ok: true,
       slug: newSlug,
-      message: `Created “${title}”. Visitors can now browse and inquire on /tours/${newSlug}.`,
+      message:
+        `Created “${title}”. Visitors can now browse and inquire on /tours/${newSlug}.` +
+        formatGhostSyncSuffix(ghostRes),
     };
   }
 
@@ -239,15 +248,16 @@ export async function saveTourAction(
   }
 
   const imageUpdate = rawImage ? resolveTourImage(rawImage) : {};
+  const rebalancedTariff = rebalanceTariff(existing.tariff, rate);
 
-  await updateOverrides((current) => ({
+  const nextOverrides = await updateOverrides((current) => ({
     ...current,
     tours: {
       ...current.tours,
       edited: {
         ...current.tours.edited,
         [slug]: {
-          ...(title.length >= 4 ? { title } : {}),
+          title,
           ...(category ? { category } : {}),
           ratePerPerson: rate,
           maxCapacity: capacity,
@@ -258,18 +268,39 @@ export async function saveTourAction(
           ...imageUpdate,
           // `existing` is the row with any earlier staff edits already applied,
           // so re-saving twice does not compound the rebalance.
-          tariff: rebalanceTariff(existing.tariff, rate),
+          tariff: rebalancedTariff,
         },
       },
     },
   }));
+
+  const updatedTour: Tour = {
+    ...existing,
+    title,
+    ...(category ? { category } : {}),
+    ratePerPerson: rate,
+    maxCapacity: capacity,
+    duration,
+    departure,
+    difficulty,
+    summary,
+    ...imageUpdate,
+    tariff: rebalancedTariff,
+  };
+  const isUnpublished = nextOverrides.tours.unpublished.includes(slug);
+  const ghostRes = await pushTourToGhost(
+    updatedTour,
+    isUnpublished ? "draft" : "published",
+  );
 
   updateTag("tours");
 
   return {
     ok: true,
     slug,
-    message: `Saved “${title.length >= 4 ? title : existing.title}”. The public package page is live.`,
+    message:
+      `Saved “${title}”. The public package page is live.` +
+      formatGhostSyncSuffix(ghostRes),
   };
 }
 
@@ -303,14 +334,22 @@ export async function setTourPublishedAction(
     };
   });
 
+  const ghostRes = await syncGhostStatusOrUpsert(
+    cleanSlug,
+    published ? "published" : "draft",
+    () => pushTourToGhost(tour, published ? "published" : "draft"),
+  );
+
   updateTag("tours");
 
   return {
     ok: true,
     slug: cleanSlug,
-    message: published
-      ? `“${tour.title}” is back on the public catalogue.`
-      : `“${tour.title}” is off the catalogue. Existing inquiries are untouched.`,
+    message:
+      (published
+        ? `“${tour.title}” is back on the public catalogue.`
+        : `“${tour.title}” is off the catalogue. Existing inquiries are untouched.`) +
+      formatGhostSyncSuffix(ghostRes),
   };
 }
 

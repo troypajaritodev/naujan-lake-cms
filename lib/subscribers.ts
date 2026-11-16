@@ -1,64 +1,44 @@
 /**
- * Newsletter subscribers (PRD FR-4.3).
+ * Client-side reactive store for newsletter subscribers.
  *
- * Mirrors the `subscribers` table in `supabase/schema.sql`, but stays on the
- * demo store until Supabase Auth (Milestone 4): the table lets anyone insert
- * yet only staff may read the audience, so a live read would look empty to the
- * admin panel. The API is asynchronous so that swap needs no callsite changes.
+ * All mutations and admin reads synchronize with `/api/subscribers`.
  */
 
-import { useSyncExternalStore } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 import { cleanEmail } from "@/lib/sanitize";
+import {
+  SubscribeError,
+  topicDescriptions,
+  topicLabels,
+  type Subscriber,
+  type SubscriberStatus,
+  type SubscriberTopic,
+  type SubscribeOutcome,
+} from "@/lib/subscribers-shared";
 
-export type SubscriberStatus = "ACTIVE" | "UNSUBSCRIBED";
-
-export type SubscriberTopic = "advisories" | "tours" | "events";
-
-export type Subscriber = {
-  id: string;
-  email: string;
-  status: SubscriberStatus;
-  topics: SubscriberTopic[];
-  subscribedAt: string;
+export {
+  SubscribeError,
+  topicDescriptions,
+  topicLabels,
+  type Subscriber,
+  type SubscriberStatus,
+  type SubscriberTopic,
+  type SubscribeOutcome,
 };
 
 export const SUBSCRIBERS_KEY = "nl.subscribers.v1";
 
-const SEED_SUBSCRIBERS: Subscriber[] = [
-  {
-    id: "sub_seed_1",
-    email: "visitor@example.com",
-    status: "ACTIVE",
-    topics: ["advisories", "tours", "events"],
-    subscribedAt: "2026-10-18T08:15:00.000Z",
-  },
-  {
-    id: "sub_seed_2",
-    email: "ana.reyes@example.com",
-    status: "ACTIVE",
-    topics: ["advisories", "tours"],
-    subscribedAt: "2026-10-25T14:20:00.000Z",
-  },
-  {
-    id: "sub_seed_3",
-    email: "carlos.mendoza@example.com",
-    status: "ACTIVE",
-    topics: ["advisories", "events"],
-    subscribedAt: "2026-11-01T06:45:00.000Z",
-  },
-  {
-    id: "sub_seed_4",
-    email: "liza.bautista@example.com",
-    status: "UNSUBSCRIBED",
-    topics: ["events"],
-    subscribedAt: "2026-09-12T10:00:00.000Z",
-  },
-];
-
-const SERVER_SNAPSHOT: Subscriber[] = [];
+const EMPTY_SUBSCRIBERS: Subscriber[] = [];
 const STORE_EVENT = "nl:subscribers";
+
 let cachedRaw: string | null = null;
-let cachedList: Subscriber[] = [];
+let cachedList: Subscriber[] = EMPTY_SUBSCRIBERS;
+let hasSyncedOnce = false;
+let inFlightRefresh: Promise<Subscriber[]> | null = null;
+
+function canUseStorage() {
+  return typeof window !== "undefined" && "localStorage" in window;
+}
 
 function emit() {
   if (typeof window !== "undefined") {
@@ -66,67 +46,46 @@ function emit() {
   }
 }
 
-export const topicLabels: Record<SubscriberTopic, string> = {
-  advisories: "Park advisories",
-  tours: "Tour releases",
-  events: "Counts & volunteer days",
-};
-
-export const topicDescriptions: Record<SubscriberTopic, string> = {
-  advisories: "Water levels, closures and weather notices from the park office.",
-  tours: "New packages, seasonal rates and operator announcements.",
-  events: "Waterbird census dates, clean-ups and training invitations.",
-};
-
-const EMAIL_PATTERN = /^[^@\s]+@[^@\s]+\.[^@\s]{2,}$/;
-
-export class SubscribeError extends Error {
-  field: "email" | "topics";
-
-  constructor(message: string, field: "email" | "topics" = "email") {
-    super(message);
-    this.name = "SubscribeError";
-    this.field = field;
+function setSubscribersCache(subscribers: Subscriber[]): Subscriber[] {
+  const serialized = JSON.stringify(subscribers);
+  cachedRaw = serialized;
+  cachedList = subscribers;
+  if (canUseStorage()) {
+    try {
+      window.localStorage.setItem(SUBSCRIBERS_KEY, serialized);
+    } catch {
+      // Ignore quota failure; memory cache stays fresh.
+    }
   }
-}
-
-function canUseStorage() {
-  return typeof window !== "undefined" && "localStorage" in window;
+  return cachedList;
 }
 
 function readSubscribers(): Subscriber[] {
-  if (!canUseStorage()) return SERVER_SNAPSHOT;
+  if (!canUseStorage()) return EMPTY_SUBSCRIBERS;
 
   try {
     const raw = window.localStorage.getItem(SUBSCRIBERS_KEY);
     if (!raw) {
-      const seededJson = JSON.stringify(SEED_SUBSCRIBERS);
-      window.localStorage.setItem(SUBSCRIBERS_KEY, seededJson);
-      cachedRaw = seededJson;
-      cachedList = SEED_SUBSCRIBERS;
-      return cachedList;
+      cachedRaw = null;
+      cachedList = EMPTY_SUBSCRIBERS;
+      return EMPTY_SUBSCRIBERS;
     }
     if (raw === cachedRaw) return cachedList;
     const parsed = JSON.parse(raw);
+    const list = Array.isArray(parsed)
+      ? (parsed as Subscriber[])
+      : EMPTY_SUBSCRIBERS;
     cachedRaw = raw;
-    cachedList = Array.isArray(parsed) ? (parsed as Subscriber[]) : [];
+    cachedList = list;
     return cachedList;
   } catch {
-    return SERVER_SNAPSHOT;
+    return EMPTY_SUBSCRIBERS;
   }
-}
-
-function writeSubscribers(next: Subscriber[]) {
-  if (!canUseStorage()) return;
-  const serialized = JSON.stringify(next);
-  window.localStorage.setItem(SUBSCRIBERS_KEY, serialized);
-  cachedRaw = serialized;
-  cachedList = next;
-  emit();
 }
 
 function subscribeStore(listener: () => void) {
   if (typeof window === "undefined") return () => {};
+
   const onStorage = (event: StorageEvent) => {
     if (event.key === SUBSCRIBERS_KEY) listener();
   };
@@ -138,103 +97,160 @@ function subscribeStore(listener: () => void) {
   };
 }
 
+function getSnapshot(): Subscriber[] {
+  return readSubscribers();
+}
+
+function getServerSnapshot(): Subscriber[] {
+  return EMPTY_SUBSCRIBERS;
+}
+
+export function clearClientSubscribers(): void {
+  hasSyncedOnce = false;
+  setSubscribersCache(EMPTY_SUBSCRIBERS);
+  emit();
+}
+
+export async function refreshSubscribersFromServer(): Promise<Subscriber[]> {
+  if (typeof window === "undefined") return EMPTY_SUBSCRIBERS;
+  if (inFlightRefresh) return inFlightRefresh;
+
+  inFlightRefresh = (async () => {
+    try {
+      const response = await fetch("/api/subscribers", {
+        method: "GET",
+        cache: "no-store",
+      });
+      if (!response.ok) {
+        if (response.status === 401 || response.status === 403) {
+          setSubscribersCache(EMPTY_SUBSCRIBERS);
+          emit();
+        }
+        return readSubscribers();
+      }
+      const data = (await response.json()) as { subscribers?: Subscriber[] };
+      const next = setSubscribersCache(
+        Array.isArray(data.subscribers) ? data.subscribers : EMPTY_SUBSCRIBERS,
+      );
+      hasSyncedOnce = true;
+      emit();
+      return next;
+    } catch {
+      return readSubscribers();
+    } finally {
+      inFlightRefresh = null;
+    }
+  })();
+
+  return inFlightRefresh;
+}
+
+function ensureInitialSync() {
+  if (typeof window === "undefined" || hasSyncedOnce || inFlightRefresh) return;
+  void refreshSubscribersFromServer();
+}
+
 export function useSubscribers(): Subscriber[] {
-  return useSyncExternalStore(
-    subscribeStore,
-    readSubscribers,
-    () => SERVER_SNAPSHOT,
-  );
+  useEffect(() => {
+    ensureInitialSync();
+  }, []);
+
+  return useSyncExternalStore(subscribeStore, getSnapshot, getServerSnapshot);
 }
 
 export async function listSubscribers(): Promise<Subscriber[]> {
-  return readSubscribers();
+  return refreshSubscribersFromServer();
 }
 
 export async function isSubscribed(email: string): Promise<boolean> {
   const normalized = cleanEmail(email);
-  return readSubscribers().some(
-    (entry) => entry.email === normalized && entry.status === "ACTIVE",
-  );
+  const cached = readSubscribers();
+  if (cached.length > 0) {
+    return cached.some(
+      (entry) => entry.email === normalized && entry.status === "ACTIVE",
+    );
+  }
+  try {
+    const response = await fetch("/api/subscribers?mine=1", {
+      cache: "no-store",
+    });
+    if (!response.ok) return false;
+    const data = (await response.json()) as { subscribed?: boolean };
+    return Boolean(data.subscribed);
+  } catch {
+    return false;
+  }
 }
 
-export type SubscribeOutcome = "created" | "resubscribed" | "updated";
-
-/**
- * Adds or re-activates an address. Returns which of the three happened so the
- * form can say something specific instead of a generic "subscribed".
- */
 export async function subscribe(
   email: string,
   topics: SubscriberTopic[],
 ): Promise<{ subscriber: Subscriber; outcome: SubscribeOutcome }> {
-  const normalized = cleanEmail(email);
+  const response = await fetch("/api/subscribers", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, topics }),
+  });
 
-  if (!EMAIL_PATTERN.test(normalized)) {
-    throw new SubscribeError("Enter a valid email address.", "email");
-  }
-  if (topics.length === 0) {
-    throw new SubscribeError("Pick at least one topic.", "topics");
-  }
+  const data = (await response.json().catch(() => ({}))) as {
+    subscriber?: Subscriber;
+    outcome?: SubscribeOutcome;
+    error?: string;
+    field?: "email" | "topics";
+  };
 
-  const subscribers = [...readSubscribers()];
-  const existing = subscribers.find((entry) => entry.email === normalized);
-
-  let subscriber: Subscriber;
-  let outcome: SubscribeOutcome;
-
-  if (!existing) {
-    subscriber = {
-      id: `sub_${Date.now().toString(36)}`,
-      email: normalized,
-      status: "ACTIVE",
-      topics,
-      subscribedAt: new Date().toISOString(),
-    };
-    subscribers.push(subscriber);
-    outcome = "created";
-  } else {
-    outcome = existing.status === "ACTIVE" ? "updated" : "resubscribed";
-    subscriber = {
-      ...existing,
-      status: "ACTIVE",
-      topics,
-      subscribedAt:
-        existing.status === "ACTIVE"
-          ? existing.subscribedAt
-          : new Date().toISOString(),
-    };
-    const index = subscribers.findIndex((entry) => entry.id === existing.id);
-    subscribers[index] = subscriber;
+  if (!response.ok || !data.subscriber || !data.outcome) {
+    throw new SubscribeError(
+      data.error ?? "Could not save your subscription.",
+      data.field ?? "email",
+    );
   }
 
-  const next = [...subscribers];
-  writeSubscribers(next);
-
-  return { subscriber, outcome };
+  hasSyncedOnce = false;
+  return {
+    subscriber: data.subscriber,
+    outcome: data.outcome,
+  };
 }
 
 export async function setSubscriberStatus(
   id: string,
   status: SubscriberStatus,
 ): Promise<Subscriber[]> {
-  const next = readSubscribers().map((entry) =>
-    entry.id === id ? { ...entry, status } : entry,
-  );
-  writeSubscribers(next);
+  const response = await fetch("/api/subscribers", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ id, status }),
+  });
+
+  const data = (await response.json().catch(() => ({}))) as {
+    subscribers?: Subscriber[];
+    error?: string;
+  };
+
+  if (!response.ok || !Array.isArray(data.subscribers)) {
+    throw new SubscribeError(
+      data.error ?? "Could not update subscriber status.",
+    );
+  }
+
+  const next = setSubscribersCache(data.subscribers);
+  hasSyncedOnce = true;
+  emit();
   return next;
 }
 
 export async function unsubscribe(email: string): Promise<boolean> {
-  const normalized = cleanEmail(email);
-  const subscribers = readSubscribers();
-  const index = subscribers.findIndex((entry) => entry.email === normalized);
+  const response = await fetch("/api/subscribers", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action: "unsubscribe", email }),
+  });
 
-  if (index === -1) return false;
-
-  const next = subscribers.map((entry, i) =>
-    i === index ? { ...entry, status: "UNSUBSCRIBED" as const } : entry,
-  );
-  writeSubscribers(next);
-
-  return true;
+  if (!response.ok) return false;
+  const data = (await response.json().catch(() => ({}))) as {
+    removed?: boolean;
+  };
+  hasSyncedOnce = false;
+  return Boolean(data.removed);
 }

@@ -15,16 +15,24 @@ import {
   Bird,
   CalendarClock,
   CheckCircle2,
+  ExternalLink,
   Inbox,
   Loader2,
   Mail,
   Megaphone,
+  RefreshCw,
   Route,
   Scale,
   Users,
 } from "lucide-react";
+import {
+  syncAllToGhostAction,
+  type GhostBulkSyncResult,
+} from "@/app/admin/ghost/actions";
+import RevenueBreakdownCard from "@/components/admin/revenue-breakdown-card";
 import StatCard from "@/components/admin/stat-card";
 import { summariseUsers, useUsers } from "@/lib/auth";
+import type { GhostStatus } from "@/lib/ghost";
 import { acceptInquiry, useInquiries, type Inquiry } from "@/lib/inquiries";
 import { useMinuteNow } from "@/lib/now";
 import { useSubscribers } from "@/lib/subscribers";
@@ -71,6 +79,8 @@ function age(createdAt: string, now: number): string {
 
 type OverviewProps = {
   today: string;
+  ghost: GhostStatus;
+  storageMode: "supabase-postgres" | "local-json";
   notices: {
     published: number;
     archived: number;
@@ -91,6 +101,8 @@ const peso = new Intl.NumberFormat("en-PH", {
 
 export default function AdminOverview({
   today,
+  ghost,
+  storageMode,
   notices,
   packages,
   wildlife,
@@ -103,6 +115,28 @@ export default function AdminOverview({
     (entry) => entry.status === "ACTIVE",
   ).length;
   const [acceptingId, setAcceptingId] = useState<string | null>(null);
+  const [syncingGhost, setSyncingGhost] = useState(false);
+  const [ghostFeedback, setGhostFeedback] = useState<GhostBulkSyncResult | null>(
+    null,
+  );
+
+  async function handleGhostSync() {
+    setSyncingGhost(true);
+    setGhostFeedback(null);
+    try {
+      const res = await syncAllToGhostAction();
+      setGhostFeedback(res);
+    } catch {
+      setGhostFeedback({
+        ok: false,
+        pushed: 0,
+        failed: 1,
+        message: "Unable to push catalogue to Ghost CMS right now.",
+      });
+    } finally {
+      setSyncingGhost(false);
+    }
+  }
 
   const now = useMinuteNow();
 
@@ -305,6 +339,11 @@ export default function AdminOverview({
         </div>
       </div>
 
+      <RevenueBreakdownCard
+        inquiries={inquiries}
+        manageHref="/admin/inquiries"
+      />
+
       <div className="grid items-start gap-6 xl:grid-cols-[1.55fr_1fr]">
         <section
           aria-labelledby="attention-heading"
@@ -484,6 +523,119 @@ export default function AdminOverview({
           </div>
         </section>
       </div>
+
+      <section
+        aria-labelledby="ghost-cms-heading"
+        className="overflow-hidden rounded-2xl bg-white ring-1 ring-ink/8"
+      >
+        <div className="flex flex-wrap items-center justify-between gap-4 border-b border-ink/8 px-5 py-4">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <h2
+                id="ghost-cms-heading"
+                className="font-display text-[19px] leading-tight text-ink"
+              >
+                Ghost CMS Integration
+              </h2>
+              <span
+                className={
+                  ghost.mode === "two-way"
+                    ? "rounded-full bg-moss-50 px-2.5 py-0.5 text-[11px] font-semibold text-moss-800 ring-1 ring-moss-600/20"
+                    : ghost.mode === "read-only"
+                      ? "rounded-full bg-lake-50 px-2.5 py-0.5 text-[11px] font-semibold text-lake-800 ring-1 ring-lake-600/20"
+                      : "rounded-full bg-sand-100 px-2.5 py-0.5 text-[11px] font-semibold text-ink-soft ring-1 ring-ink/10"
+                }
+              >
+                {ghost.mode === "two-way"
+                  ? "Two-way sync active"
+                  : ghost.mode === "read-only"
+                    ? "Read-only Content API"
+                    : "Local fallback mode"}
+              </span>
+              <span
+                className={
+                  storageMode === "supabase-postgres"
+                    ? "rounded-full bg-moss-50 px-2.5 py-0.5 text-[11px] font-semibold text-moss-800 ring-1 ring-moss-600/20"
+                    : "rounded-full bg-sand-100 px-2.5 py-0.5 text-[11px] font-semibold text-ink-soft ring-1 ring-ink/10"
+                }
+              >
+                {storageMode === "supabase-postgres"
+                  ? "Storage: Supabase Postgres"
+                  : "Storage: Local JSON"}
+              </span>
+            </div>
+            <p className="mt-0.5 text-[12.5px] text-ink-soft/65">
+              {ghost.configured
+                ? `Connected to ${ghost.host} · Webhook endpoint: /api/webhooks/ghost`
+                : "Set GHOST_URL, GHOST_CONTENT_API_KEY, and GHOST_ADMIN_API_KEY in .env.local to connect a live Ghost instance."}
+            </p>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2.5">
+            {ghost.studioUrl ? (
+              <a
+                href={ghost.studioUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 rounded-full bg-sand-50 px-3.5 py-1.5 text-[12px] font-semibold text-ink ring-1 ring-ink/10 hover:bg-sand-100"
+              >
+                Open Ghost Studio
+                <ExternalLink className="size-3.5" aria-hidden="true" />
+              </a>
+            ) : null}
+            <button
+              type="button"
+              onClick={handleGhostSync}
+              disabled={syncingGhost || !ghost.adminApiReady}
+              className="inline-flex items-center gap-1.5 rounded-full bg-lake-700 px-4 py-1.5 text-[12px] font-semibold text-white transition hover:bg-lake-800 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {syncingGhost ? (
+                <>
+                  <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />
+                  Syncing to Ghost…
+                </>
+              ) : (
+                <>
+                  <RefreshCw className="size-3.5" aria-hidden="true" />
+                  Push Catalogue to Ghost
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+
+        <div className="grid gap-3 px-5 py-4 sm:grid-cols-2 lg:grid-cols-4">
+          {[
+            { label: "Advisories", tag: "#nl-advisory", ready: ghost.contentApiReady },
+            { label: "Tour Packages", tag: "#nl-tour", ready: ghost.contentApiReady },
+            { label: "Wildlife Species", tag: "#nl-species", ready: ghost.contentApiReady },
+            { label: "Rules & Zones", tag: "#nl-guideline", ready: ghost.contentApiReady },
+          ].map((channel) => (
+            <div
+              key={channel.tag}
+              className="rounded-xl bg-sand-50/70 px-3.5 py-2.5 ring-1 ring-ink/6"
+            >
+              <p className="text-[12px] font-semibold text-ink">{channel.label}</p>
+              <p className="mt-0.5 font-mono text-[11px] text-ink-soft/65">
+                {channel.tag}
+              </p>
+            </div>
+          ))}
+        </div>
+
+        {ghostFeedback ? (
+          <div
+            role="status"
+            className={`border-t px-5 py-3 text-[12px] font-medium ${
+              ghostFeedback.ok
+                ? "border-moss-600/15 bg-moss-50/70 text-moss-900"
+                : "border-reed-600/15 bg-reed-50/70 text-reed-900"
+            }`}
+          >
+            {ghostFeedback.message}
+          </div>
+        ) : null}
+      </section>
     </div>
   );
 }

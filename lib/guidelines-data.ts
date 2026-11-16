@@ -4,6 +4,7 @@ import {
   mergeParkRules,
   readOverrides,
 } from "@/lib/content-store";
+import { fetchGhostGuidelines } from "@/lib/ghost-cms";
 import {
   lakeZones,
   parkRules,
@@ -11,22 +12,30 @@ import {
   type Zone,
 } from "@/lib/guidelines";
 
-/** Live park rules, merging admin CMS overrides over the baseline rules. */
+/** Live park rules, merging admin CMS overrides over Ghost CMS and baseline rules. */
 export async function getParkRules(): Promise<ParkRule[]> {
   "use cache";
   cacheLife("hours");
-  cacheTag("guidelines");
+  cacheTag("guidelines", "ghost");
 
-  const overrides = await readOverrides();
-  return mergeParkRules(parkRules, overrides);
+  const [overrides, ghost] = await Promise.all([
+    readOverrides(),
+    fetchGhostGuidelines(),
+  ]);
+  const base = ghost?.rules && ghost.rules.length > 0 ? ghost.rules : parkRules;
+  return mergeParkRules(base, overrides);
 }
 
-/** Live lake zoning cards, merging admin CMS overrides over baseline zones. */
+/** Live lake zoning cards, merging admin CMS overrides over Ghost CMS and baseline zones. */
 export async function getLakeZones(): Promise<Zone[]> {
   "use cache";
   cacheLife("hours");
-  cacheTag("guidelines");
+  cacheTag("guidelines", "ghost");
 
-  const overrides = await readOverrides();
-  return mergeLakeZones(lakeZones, overrides);
+  const [overrides, ghost] = await Promise.all([
+    readOverrides(),
+    fetchGhostGuidelines(),
+  ]);
+  const base = ghost?.zones && ghost.zones.length > 0 ? ghost.zones : lakeZones;
+  return mergeLakeZones(base, overrides);
 }

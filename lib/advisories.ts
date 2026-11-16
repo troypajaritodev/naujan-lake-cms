@@ -17,6 +17,11 @@ import {
   readOverrides,
 } from "@/lib/content-store";
 import {
+  dedupeBySlug,
+  fetchGhostAdvisories,
+  mergeGhostBase,
+} from "@/lib/ghost-cms";
+import {
   getSupabaseClient,
   type AdvisoryCategory,
   type Tables,
@@ -277,7 +282,7 @@ function toAdvisory(row: Tables<"advisories">): Advisory {
 async function baseAdvisories(): Promise<Advisory[]> {
   "use cache";
   cacheLife("hours");
-  cacheTag("advisories");
+  cacheTag("advisories", "ghost");
 
   const client = getSupabaseClient();
   if (!client) return seedAdvisories;
@@ -297,24 +302,40 @@ async function baseAdvisories(): Promise<Advisory[]> {
   );
 }
 
-/** Every published notice, newest first, with the admin panel's edits applied. */
+async function baseAdvisoriesPartition() {
+  "use cache";
+  cacheLife("hours");
+  cacheTag("advisories", "ghost");
+
+  const [fallbackBase, ghost] = await Promise.all([
+    baseAdvisories(),
+    fetchGhostAdvisories(),
+  ]);
+  return mergeGhostBase(fallbackBase, ghost);
+}
+
+/** Every published notice, newest first, with Ghost and admin edits applied. */
 export async function getSortedAdvisories(): Promise<Advisory[]> {
   "use cache";
   cacheLife("hours");
-  cacheTag("advisories");
+  cacheTag("advisories", "ghost");
 
-  const [base, overrides] = await Promise.all([
-    baseAdvisories(),
+  const [{ active, draftedSlugs }, overrides] = await Promise.all([
+    baseAdvisoriesPartition(),
     readOverrides(),
   ]);
 
-  return sortNewestFirst(mergeAdvisories(base, overrides));
+  return sortNewestFirst(
+    mergeAdvisories(active, overrides).filter(
+      (advisory) => !draftedSlugs.has(advisory.slug),
+    ),
+  );
 }
 
 export async function getAdvisory(slug: string): Promise<Advisory | undefined> {
   "use cache";
   cacheLife("hours");
-  cacheTag("advisories");
+  cacheTag("advisories", "ghost");
 
   // Resolved against the merged list so a notice published from the panel is
   // reachable, and an archived one 404s.
@@ -326,21 +347,23 @@ export async function getAdvisory(slug: string): Promise<Advisory | undefined> {
 export async function getArchivedAdvisories(): Promise<Advisory[]> {
   "use cache";
   cacheLife("hours");
-  cacheTag("advisories");
+  cacheTag("advisories", "ghost");
 
-  const [base, overrides] = await Promise.all([
-    baseAdvisories(),
+  const [{ active, drafted }, overrides] = await Promise.all([
+    baseAdvisoriesPartition(),
     readOverrides(),
   ]);
 
-  return sortNewestFirst(archivedAdvisories(base, overrides));
+  return sortNewestFirst(
+    dedupeBySlug(drafted, archivedAdvisories(active, overrides)),
+  );
 }
 
 /** The newest notices, shaped for the home-page preview list. */
 export async function getLatestAdvisories(limit = 3): Promise<AdvisoryPreview[]> {
   "use cache";
   cacheLife("hours");
-  cacheTag("advisories");
+  cacheTag("advisories", "ghost");
 
   const advisories = await getSortedAdvisories();
   return advisories.slice(0, limit).map(toAdvisoryPreview);
@@ -352,7 +375,7 @@ export async function getRelatedAdvisories(
 ): Promise<Advisory[]> {
   "use cache";
   cacheLife("hours");
-  cacheTag("advisories");
+  cacheTag("advisories", "ghost");
 
   const advisories = await getSortedAdvisories();
   return advisories.filter((advisory) => advisory.slug !== slug).slice(0, limit);
@@ -366,7 +389,7 @@ export async function getRelatedAdvisories(
 export async function getBannerAdvisory(): Promise<AdvisoryPreview | null> {
   "use cache";
   cacheLife("hours");
-  cacheTag("advisories");
+  cacheTag("advisories", "ghost");
 
   const advisories = await getSortedAdvisories();
   const chosen =

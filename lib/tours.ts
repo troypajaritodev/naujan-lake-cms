@@ -13,6 +13,11 @@ import {
   mergeTours,
   readOverrides,
 } from "@/lib/content-store";
+import {
+  dedupeBySlug,
+  fetchGhostTours,
+  mergeGhostBase,
+} from "@/lib/ghost-cms";
 import { getSupabaseClient, type Tables } from "@/lib/supabase";
 import { fetchOrFallback, queryError } from "@/lib/supabase/query";
 import {
@@ -337,7 +342,7 @@ function toTour(row: Tables<"tours">): Tour {
 async function baseTours(): Promise<Tour[]> {
   "use cache";
   cacheLife("hours");
-  cacheTag("tours");
+  cacheTag("tours", "ghost");
 
   const client = getSupabaseClient();
   if (!client) return seedTours;
@@ -358,20 +363,37 @@ async function baseTours(): Promise<Tour[]> {
   );
 }
 
+async function baseToursPartition() {
+  "use cache";
+  cacheLife("hours");
+  cacheTag("tours", "ghost");
+
+  const [fallbackBase, ghost] = await Promise.all([
+    baseTours(),
+    fetchGhostTours(),
+  ]);
+  return mergeGhostBase(fallbackBase, ghost);
+}
+
 /** Active packages, in the order the public listing shows them. */
 export async function getTours(): Promise<Tour[]> {
   "use cache";
   cacheLife("hours");
-  cacheTag("tours");
+  cacheTag("tours", "ghost");
 
-  const [base, overrides] = await Promise.all([baseTours(), readOverrides()]);
-  return mergeTours(base, overrides);
+  const [{ active, draftedSlugs }, overrides] = await Promise.all([
+    baseToursPartition(),
+    readOverrides(),
+  ]);
+  return mergeTours(active, overrides).filter(
+    (tour) => !draftedSlugs.has(tour.slug),
+  );
 }
 
 export async function getTour(slug: string): Promise<Tour | undefined> {
   "use cache";
   cacheLife("hours");
-  cacheTag("tours");
+  cacheTag("tours", "ghost");
 
   // Resolved against the merged list so staff edits reach the detail page.
   const tours = await getTours();
@@ -382,10 +404,13 @@ export async function getTour(slug: string): Promise<Tour | undefined> {
 export async function getToursForAdmin(): Promise<Tour[]> {
   "use cache";
   cacheLife("hours");
-  cacheTag("tours");
+  cacheTag("tours", "ghost");
 
-  const [base, overrides] = await Promise.all([baseTours(), readOverrides()]);
-  return applyTourEdits(base, overrides);
+  const [{ active, drafted }, overrides] = await Promise.all([
+    baseToursPartition(),
+    readOverrides(),
+  ]);
+  return dedupeBySlug(applyTourEdits(active, overrides), drafted);
 }
 
 /**
@@ -398,7 +423,7 @@ export async function getToursForSpecies(
 ): Promise<Tour[]> {
   "use cache";
   cacheLife("hours");
-  cacheTag("tours", "species");
+  cacheTag("tours", "species", "ghost");
 
   const tours = await getTours();
   return tours
@@ -416,7 +441,7 @@ export async function getRelatedTours(
 ): Promise<Tour[]> {
   "use cache";
   cacheLife("hours");
-  cacheTag("tours");
+  cacheTag("tours", "ghost");
 
   const tours = await getTours();
   const current = tours.find((tour) => tour.slug === slug);

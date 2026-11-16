@@ -28,8 +28,16 @@ function formatPhp(amount: number): string {
 
 function inquiryFacts(inquiry: Inquiry): string[] {
   const paymentLines: string[] = [];
+  if (typeof inquiry.facilitationFee === "number" && inquiry.facilitationFee > 0) {
+    if (typeof inquiry.packageSubtotal === "number" && inquiry.packageSubtotal > 0) {
+      paymentLines.push(`Package tariff: ${formatPhp(inquiry.packageSubtotal)}`);
+    }
+    paymentLines.push(
+      `Booking facilitation fee: ${formatPhp(inquiry.facilitationFee)}`,
+    );
+  }
   if (typeof inquiry.totalAmount === "number" && inquiry.totalAmount > 0) {
-    paymentLines.push(`Total tariff: ${formatPhp(inquiry.totalAmount)}`);
+    paymentLines.push(`Total payable: ${formatPhp(inquiry.totalAmount)}`);
   }
   if (
     typeof inquiry.firstPaymentAmount === "number" &&

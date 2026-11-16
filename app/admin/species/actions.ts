@@ -1,7 +1,16 @@
 "use server";
 
 import { updateTag } from "next/cache";
-import { readOverrides, updateOverrides } from "@/lib/content-store";
+import {
+  readOverrides,
+  updateOverrides,
+  type SpeciesPatch,
+} from "@/lib/content-store";
+import {
+  formatGhostSyncSuffix,
+  pushSpeciesToGhost,
+  syncGhostStatusOrUpsert,
+} from "@/lib/ghost-cms";
 import { cleanText, slugify } from "@/lib/sanitize";
 import { requireAdminSession } from "@/lib/server-auth";
 import { getSpecies, getArchivedSpecies, getWildlifeGroups } from "@/lib/species";
@@ -137,7 +146,7 @@ export async function saveSpeciesAction(
     ...(photo ? { photo } : {}),
   };
 
-  await updateOverrides((current) => {
+  const nextOverrides = await updateOverrides((current) => {
     const createdIndex = current.species.created.findIndex(
       (entry) => entry.slug === record.slug,
     );
@@ -161,16 +170,16 @@ export async function saveSpeciesAction(
       };
     }
 
-    const patch: Omit<Species, "slug"> = {
+    const patch: SpeciesPatch = {
       group: record.group,
       commonName: record.commonName,
-      localName: record.localName,
+      localName: record.localName ?? null,
       scientificName: record.scientificName,
       status: record.status,
       seasonality: record.seasonality,
       habitat: record.habitat,
       description: record.description,
-      photo: record.photo,
+      photo: record.photo ?? null,
     };
 
     return {
@@ -182,14 +191,22 @@ export async function saveSpeciesAction(
     };
   });
 
+  const isArchived = nextOverrides.species.archived.includes(record.slug);
+  const ghostRes = await pushSpeciesToGhost(
+    record,
+    isArchived ? "draft" : "published",
+  );
+
   updateTag("species");
 
   return {
     ok: true,
     slug: record.slug,
-    message: existingSlug
-      ? `Updated “${record.commonName}” on the public wildlife catalogue.`
-      : `Added “${record.commonName}” to the public wildlife catalogue.`,
+    message:
+      (existingSlug
+        ? `Updated “${record.commonName}” on the public wildlife catalogue.`
+        : `Added “${record.commonName}” to the public wildlife catalogue.`) +
+      formatGhostSyncSuffix(ghostRes),
   };
 }
 
@@ -206,6 +223,11 @@ export async function setSpeciesArchivedAction(
     return { ok: false, message: "Missing species identifier." };
   }
 
+  const candidates = archived
+    ? await getSpecies()
+    : await getArchivedSpecies();
+  const target = candidates.find((entry) => entry.slug === cleanSlug);
+
   await updateOverrides((current) => {
     const others = current.species.archived.filter((item) => item !== cleanSlug);
     return {
@@ -217,14 +239,24 @@ export async function setSpeciesArchivedAction(
     };
   });
 
+  const ghostRes = await syncGhostStatusOrUpsert(
+    cleanSlug,
+    archived ? "draft" : "published",
+    target
+      ? () => pushSpeciesToGhost(target, archived ? "draft" : "published")
+      : undefined,
+  );
+
   updateTag("species");
 
   return {
     ok: true,
     slug: cleanSlug,
-    message: archived
-      ? "Removed from the public catalogue. You can restore it anytime under Archived."
-      : "Restored to the public wildlife catalogue.",
+    message:
+      (archived
+        ? "Removed from the public catalogue. You can restore it anytime under Archived."
+        : "Restored to the public wildlife catalogue.") +
+      formatGhostSyncSuffix(ghostRes),
   };
 }
 

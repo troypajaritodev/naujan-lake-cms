@@ -3,7 +3,7 @@ import { connection } from "next/server";
 import StatCard from "@/components/admin/stat-card";
 import TourManager from "@/components/admin/tour-manager";
 import { readOverrides } from "@/lib/content-store";
-import { getToursForAdmin } from "@/lib/tours";
+import { getTours, getToursForAdmin } from "@/lib/tours";
 
 export const metadata: Metadata = {
   title: "Packages · Admin",
@@ -21,13 +21,19 @@ const peso = new Intl.NumberFormat("en-PH", {
 export default async function AdminToursPage() {
   await connection();
 
-  const [tours, overrides] = await Promise.all([
+  const [tours, onSale, overrides] = await Promise.all([
     getToursForAdmin(),
+    getTours(),
     readOverrides(),
   ]);
 
-  const unpublished = new Set(overrides.tours.unpublished);
-  const onSale = tours.filter((tour) => !unpublished.has(tour.slug));
+  const onSaleSlugs = new Set(onSale.map((tour) => tour.slug));
+  const unpublished = new Set([
+    ...overrides.tours.unpublished,
+    ...tours
+      .filter((tour) => !onSaleSlugs.has(tour.slug))
+      .map((tour) => tour.slug),
+  ]);
   const edited = Object.keys(overrides.tours.edited).length;
   const averageRate = onSale.length
     ? Math.round(

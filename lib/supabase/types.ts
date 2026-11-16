@@ -30,7 +30,7 @@ export type InquiryStatus =
   | "COMPLETED"
   | "DECLINED"
   | "CANCELLED";
-export type PaymentMethod = "GCASH" | "MAYA" | "BANK_TRANSFER";
+export type PaymentMethod = "GCASH" | "MAYA" | "BANK_TRANSFER" | "ON_SITE_CASH";
 export type PaymentStatus =
   | "UNPAID"
   | "PENDING_VERIFICATION"
@@ -92,7 +92,10 @@ type TourInquiryRow = {
   id: string;
   reference_code: string;
   tour_id: string;
+  tour_slug: string | null;
+  tour_title: string | null;
   user_id: string | null;
+  user_email: string | null;
   full_name: string;
   email: string;
   phone: string | null;
@@ -107,11 +110,13 @@ type TourInquiryRow = {
   decided_by: "visitor" | "park" | null;
   rate_per_person: number;
   total_amount: number;
+  first_payment_rate: number;
   first_payment_amount: number;
   balance_amount: number;
   payment_method: PaymentMethod | null;
   payment_reference: string | null;
   payment_account_name: string | null;
+  payment_proof_url: string | null;
   payment_status: PaymentStatus;
   payment_submitted_at: string | null;
   payment_verified_at: string | null;
@@ -152,11 +157,19 @@ type UserRow = {
   email: string;
   full_name: string;
   phone: string | null;
+  address: string | null;
+  emergency_contact: string | null;
   role: UserRole;
   password_hash: string;
   is_active: boolean;
   created_at: string;
   last_login_at: string | null;
+};
+
+type PortalKvRow = {
+  key: string;
+  value: Json;
+  updated_at: string;
 };
 
 type Table<Row, Insert = Partial<Row>, Update = Partial<Row>> = {
@@ -171,8 +184,30 @@ export type Database = {
     Tables: {
       users: Table<
         UserRow,
-        Omit<UserRow, "id" | "role" | "is_active" | "created_at" | "last_login_at"> &
-          Partial<Pick<UserRow, "id" | "role" | "is_active" | "created_at" | "last_login_at">>
+        Omit<
+          UserRow,
+          | "id"
+          | "role"
+          | "is_active"
+          | "created_at"
+          | "last_login_at"
+          | "phone"
+          | "address"
+          | "emergency_contact"
+        > &
+          Partial<
+            Pick<
+              UserRow,
+              | "id"
+              | "role"
+              | "is_active"
+              | "created_at"
+              | "last_login_at"
+              | "phone"
+              | "address"
+              | "emergency_contact"
+            >
+          >
       >;
       categories: Table<CategoryRow, Omit<CategoryRow, "id" | "sort_order" | "created_at"> & Partial<Pick<CategoryRow, "id" | "sort_order" | "created_at">>>;
       species: Table<
@@ -187,8 +222,16 @@ export type Database = {
       >;
       tour_inquiries: Table<
         TourInquiryRow,
-        Omit<TourInquiryRow, "id" | "status" | "created_at" | "updated_at"> &
-          Partial<Pick<TourInquiryRow, "id" | "status" | "created_at" | "updated_at">>
+        Pick<
+          TourInquiryRow,
+          "reference_code" | "tour_id" | "full_name" | "email" | "target_date" | "party_size"
+        > &
+          Partial<
+            Omit<
+              TourInquiryRow,
+              "reference_code" | "tour_id" | "full_name" | "email" | "target_date" | "party_size"
+            >
+          >
       >;
       advisories: Table<
         AdvisoryRow,
@@ -221,6 +264,10 @@ export type Database = {
         SubscriberRow,
         Omit<SubscriberRow, "id" | "status" | "subscribed_at"> &
           Partial<Pick<SubscriberRow, "id" | "status" | "subscribed_at">>
+      >;
+      portal_kv: Table<
+        PortalKvRow,
+        Omit<PortalKvRow, "updated_at"> & Partial<Pick<PortalKvRow, "updated_at">>
       >;
     };
     Views: { [_ in never]: never };

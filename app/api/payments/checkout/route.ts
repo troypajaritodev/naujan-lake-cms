@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import type { PaymentMethod } from "@/lib/inquiries";
 import { cleanEmail, cleanText } from "@/lib/sanitize";
+import { requireSession } from "@/lib/server-auth";
 import { siteUrl } from "@/lib/site-url";
 
 type CheckoutRequest = {
@@ -81,6 +82,14 @@ function paymongoPaymentTypes(method: PaymentMethod): string[] {
  * authorization flow without dead-ending on static mock instructions.
  */
 export async function POST(request: Request) {
+  const session = await requireSession();
+  if (!session) {
+    return NextResponse.json(
+      { error: "Sign in to initialize a payment checkout." },
+      { status: 401 },
+    );
+  }
+
   let body: CheckoutRequest;
   try {
     body = (await request.json()) as CheckoutRequest;
@@ -96,7 +105,11 @@ export async function POST(request: Request) {
     );
   }
 
-  const method = String(body.paymentMethod ?? "GCASH") as PaymentMethod;
+  const rawMethod = String(body.paymentMethod ?? "GCASH");
+  const method: PaymentMethod =
+    rawMethod === "GCASH" || rawMethod === "MAYA" || rawMethod === "BANK_TRANSFER"
+      ? rawMethod
+      : "GCASH";
   const tourTitle = cleanText(String(body.tourTitle ?? "Naujan Lake Tour"), 140);
   const customerName = cleanText(String(body.customerName ?? "Visitor"), 120);
   const customerEmail = cleanEmail(String(body.customerEmail ?? ""));
@@ -141,6 +154,10 @@ export async function POST(request: Request) {
               },
             ],
             payment_method_types: paymongoPaymentTypes(method),
+            metadata: {
+              user_email: session.email.toLowerCase(),
+              tour_title: tourTitle,
+            },
             success_url: `${siteOrigin}/inquire?checkout=success&session_id={CHECKOUT_SESSION_ID}`,
             cancel_url: `${siteOrigin}/inquire?checkout=cancelled`,
           },

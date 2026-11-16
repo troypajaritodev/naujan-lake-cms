@@ -1,9 +1,6 @@
 import "server-only";
 
 import crypto from "node:crypto";
-import fs from "node:fs/promises";
-import os from "node:os";
-import path from "node:path";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
@@ -13,6 +10,7 @@ import {
   type SessionUser,
   type StoredUser,
 } from "@/lib/auth-seeds";
+import { JsonFileStore } from "@/lib/json-store";
 import { cleanEmail, cleanPhone, cleanText } from "@/lib/sanitize";
 import {
   SESSION_COOKIE_NAME,
@@ -20,8 +18,9 @@ import {
   signSessionToken,
   verifySessionToken,
 } from "@/lib/session-token";
+import { getSupabaseAdminClient } from "@/lib/supabase/admin";
 import { isSupabaseConfigured, supabaseKey, supabaseUrl } from "@/lib/supabase/config";
-import type { Database } from "@/lib/supabase/types";
+import type { Database, Tables } from "@/lib/supabase/types";
 
 export class ServerAuthError extends Error {
   status: number;
@@ -40,6 +39,9 @@ export class ServerAuthError extends Error {
 }
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const SHA256_HEX_PATTERN = /^[0-9a-f]{64}$/i;
 
 export function validateEmailAddress(email: string): boolean {
   return EMAIL_PATTERN.test(email.trim());
@@ -65,6 +67,10 @@ function constantTimeHexEqual(leftHex: string, rightHex: string): boolean {
   const right = Buffer.from(rightHex, "hex");
   if (left.length !== right.length || left.length === 0) return false;
   return crypto.timingSafeEqual(left, right);
+}
+
+function isVerifiableLocalHash(storedHash: string): boolean {
+  return storedHash.startsWith("scrypt$") || SHA256_HEX_PATTERN.test(storedHash);
 }
 
 function verifyStoredPassword(
@@ -108,55 +114,40 @@ export function toSessionUser(user: StoredUser): SessionUser {
   };
 }
 
-const DATA_FILE = path.join(process.cwd(), ".data", "users.json");
-const FALLBACK_DATA_FILE = path.join(os.tmpdir(), "naujan-lake-users.json");
-
-let writeQueue: Promise<void> = Promise.resolve();
-
-async function readUsersFromDisk(): Promise<StoredUser[]> {
-  for (const candidate of [DATA_FILE, FALLBACK_DATA_FILE]) {
-    try {
-      const raw = await fs.readFile(candidate, "utf8");
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) return parsed as StoredUser[];
-    } catch {
-      // Try next storage location or seed defaults.
-    }
-  }
-  const seeded = [...SEED_USERS];
-  await writeUsersToDisk(seeded);
-  return seeded;
-}
-
-async function writeUsersToDisk(users: StoredUser[]): Promise<void> {
-  const payload = JSON.stringify(users, null, 2);
-  try {
-    await fs.mkdir(path.dirname(DATA_FILE), { recursive: true });
-    await fs.writeFile(DATA_FILE, payload, "utf8");
-  } catch {
-    try {
-      await fs.writeFile(FALLBACK_DATA_FILE, payload, "utf8");
-    } catch {
-      // Non-fatal in read-only runtimes; session cookie still preserves state.
-    }
-  }
-}
-
-async function withUsersLock<T>(fn: (users: StoredUser[]) => Promise<{ next?: StoredUser[]; result: T }>): Promise<T> {
-  const run = async () => {
-    const current = await readUsersFromDisk();
-    const { next, result } = await fn(current);
-    if (next) {
-      await writeUsersToDisk(next);
-    }
-    return result;
+function rowToStoredUser(row: Tables<"users">): StoredUser {
+  return {
+    id: row.id,
+    email: row.email.toLowerCase(),
+    fullName: row.full_name,
+    phone: row.phone ?? "",
+    ...(row.address ? { address: row.address } : {}),
+    ...(row.emergency_contact ? { emergencyContact: row.emergency_contact } : {}),
+    role: row.role === "admin" ? "admin" : "visitor",
+    passwordHash: row.password_hash,
+    isActive: row.is_active,
+    createdAt: row.created_at,
+    ...(row.last_login_at ? { lastLoginAt: row.last_login_at } : {}),
   };
-  const pending = writeQueue.then(run, run);
-  writeQueue = pending.then(
-    () => undefined,
-    () => undefined,
-  );
-  return pending;
+}
+
+const usersStore = new JsonFileStore<StoredUser[]>({
+  filename: "users.json",
+  fallbackSubdir: "naujan-lake-auth",
+  normalize: (raw) =>
+    Array.isArray(raw) ? (raw as StoredUser[]) : [...SEED_USERS],
+});
+
+async function withUsersLock<T>(
+  fn: (users: StoredUser[]) => Promise<{ next?: StoredUser[]; result: T }>,
+): Promise<T> {
+  return usersStore.withLock(async (current) => {
+    const { next, result } = await fn(current);
+    return {
+      next: next ?? current,
+      result,
+      skipWrite: !next,
+    };
+  });
 }
 
 function createStatelessSupabaseClient(accessToken?: string) {
@@ -171,6 +162,38 @@ function createStatelessSupabaseClient(accessToken?: string) {
       ? { global: { headers: { Authorization: `Bearer ${accessToken}` } } }
       : {}),
   });
+}
+
+async function findSupabaseUser(
+  admin: NonNullable<ReturnType<typeof getSupabaseAdminClient>>,
+  criteria: { id?: string; email?: string },
+): Promise<StoredUser | null> {
+  if (criteria.id && UUID_PATTERN.test(criteria.id)) {
+    const { data, error } = await admin
+      .from("users")
+      .select("*")
+      .eq("id", criteria.id)
+      .maybeSingle();
+    if (error) {
+      throw new ServerAuthError("Authentication storage is temporarily unavailable.", 502);
+    }
+    if (data) return rowToStoredUser(data);
+  }
+
+  const email = criteria.email?.trim().toLowerCase();
+  if (email) {
+    const { data, error } = await admin
+      .from("users")
+      .select("*")
+      .eq("email", email)
+      .maybeSingle();
+    if (error) {
+      throw new ServerAuthError("Authentication storage is temporarily unavailable.", 502);
+    }
+    if (data) return rowToStoredUser(data);
+  }
+
+  return null;
 }
 
 export async function attachSessionCookie(
@@ -212,24 +235,27 @@ export async function getServerSession(): Promise<SessionUser | null> {
   const payload = await verifySessionToken(token);
   if (!payload) return null;
 
-  const users = await readUsersFromDisk();
+  const admin = getSupabaseAdminClient();
+  if (admin) {
+    try {
+      const match = await findSupabaseUser(admin, {
+        id: payload.id,
+        email: payload.email,
+      });
+      if (!match || match.isActive === false) return null;
+      return toSessionUser(match);
+    } catch {
+      return null;
+    }
+  }
+
+  const users = await usersStore.read();
   const match = users.find(
     (entry) => entry.id === payload.id || entry.email === payload.email.toLowerCase(),
   );
-  if (match) {
-    if (match.isActive === false) return null;
-    return toSessionUser(match);
-  }
+  if (!match || match.isActive === false) return null;
 
-  return {
-    id: payload.id,
-    email: payload.email,
-    fullName: payload.fullName,
-    phone: "",
-    role: payload.role,
-    createdAt: new Date().toISOString(),
-    isActive: true,
-  };
+  return toSessionUser(match);
 }
 
 export async function requireSession(): Promise<SessionUser | null> {
@@ -253,6 +279,114 @@ export async function authenticateUser(
     throw new ServerAuthError("Enter your email and password.", 400, "email");
   }
 
+  const admin = getSupabaseAdminClient();
+  if (admin) {
+    const existing = await findSupabaseUser(admin, { email });
+    if (existing?.isActive === false) {
+      throw new ServerAuthError(
+        "This account has been suspended. Contact the park office.",
+        403,
+        "email",
+      );
+    }
+
+    const sb = createStatelessSupabaseClient();
+    const now = new Date().toISOString();
+
+    if (sb) {
+      const { data, error } = await sb.auth.signInWithPassword({ email, password });
+      if (!error && data.user) {
+        const metaName =
+          cleanText(String(data.user.user_metadata?.full_name ?? ""), 120) ||
+          email.split("@")[0] ||
+          "Park Visitor";
+        const metaPhone = cleanPhone(String(data.user.user_metadata?.phone ?? ""));
+
+        if (existing) {
+          const { data: updatedRow, error: updateErr } = await admin
+            .from("users")
+            .update({ last_login_at: now })
+            .eq("id", existing.id)
+            .select("*")
+            .single();
+          if (!updateErr && updatedRow) {
+            return toSessionUser(rowToStoredUser(updatedRow));
+          }
+          return toSessionUser({ ...existing, lastLoginAt: now });
+        }
+
+        const { data: upserted, error: upsertErr } = await admin
+          .from("users")
+          .upsert(
+            {
+              id: data.user.id,
+              email,
+              full_name: metaName.length >= 2 ? metaName : "Park Visitor",
+              phone: metaPhone || null,
+              role: "visitor",
+              is_active: true,
+              password_hash: "supabase-auth-managed",
+              last_login_at: now,
+            },
+            { onConflict: "email" },
+          )
+          .select("*")
+          .single();
+        if (upsertErr || !upserted) {
+          throw new ServerAuthError("Could not load user profile.", 502);
+        }
+        return toSessionUser(rowToStoredUser(upserted));
+      }
+
+      if (error) {
+        if (/email not confirmed/i.test(error.message)) {
+          throw new ServerAuthError(
+            "Confirm your email address before signing in.",
+            403,
+            "email",
+          );
+        }
+        const isAuthRejection =
+          error.status === 400 ||
+          error.status === 401 ||
+          /invalid login credentials/i.test(error.message);
+        if (isAuthRejection && (!existing || !isVerifiableLocalHash(existing.passwordHash))) {
+          if (existing) {
+            throw new ServerAuthError("That password is not correct.", 401, "password");
+          }
+          throw new ServerAuthError(
+            "No account matches that email or password.",
+            401,
+            "email",
+          );
+        }
+      }
+    }
+
+    if (existing && isVerifiableLocalHash(existing.passwordHash)) {
+      const check = verifyStoredPassword(email, password, existing.passwordHash);
+      if (!check.valid) {
+        throw new ServerAuthError("That password is not correct.", 401, "password");
+      }
+
+      const patch: Database["public"]["Tables"]["users"]["Update"] = {
+        last_login_at: now,
+        ...(check.needsUpgrade ? { password_hash: hashPasswordScrypt(password) } : {}),
+      };
+      const { data: updatedRow } = await admin
+        .from("users")
+        .update(patch)
+        .eq("id", existing.id)
+        .select("*")
+        .single();
+      return toSessionUser(
+        updatedRow ? rowToStoredUser(updatedRow) : { ...existing, lastLoginAt: now },
+      );
+    }
+
+    throw new ServerAuthError("No account matches that email.", 401, "email");
+  }
+
   return withUsersLock(async (users) => {
     const existingIndex = users.findIndex((entry) => entry.email === email);
     const existing = existingIndex >= 0 ? users[existingIndex] : undefined;
@@ -265,36 +399,21 @@ export async function authenticateUser(
       );
     }
 
-    if (existing) {
-      const check = verifyStoredPassword(email, password, existing.passwordHash);
-      if (!check.valid) {
-        throw new ServerAuthError("That password is not correct.", 401, "password");
-      }
+    const isLocalOnly = existing?.id.startsWith("usr_") ?? false;
+    const sb = !isLocalOnly ? createStatelessSupabaseClient() : null;
 
-      const signedIn: StoredUser = {
-        ...existing,
-        lastLoginAt: new Date().toISOString(),
-        passwordHash: check.needsUpgrade
-          ? hashPasswordScrypt(password)
-          : existing.passwordHash,
-      };
-
-      const next = [...users];
-      next[existingIndex] = signedIn;
-      return { next, result: toSessionUser(signedIn) };
-    }
-
-    // Account not yet cached locally — verify via live Supabase Auth when configured.
-    const sb = createStatelessSupabaseClient();
     if (sb) {
       const { data, error } = await sb.auth.signInWithPassword({ email, password });
       if (!error && data.user) {
-        let profileRole: Role = "visitor";
+        let profileRole: Role = existing?.role ?? "visitor";
         let profileName =
+          existing?.fullName ||
           cleanText(String(data.user.user_metadata?.full_name ?? ""), 120) ||
           email.split("@")[0];
-        let profilePhone = cleanPhone(String(data.user.user_metadata?.phone ?? ""));
-        let profileActive = true;
+        let profilePhone =
+          existing?.phone ||
+          cleanPhone(String(data.user.user_metadata?.phone ?? ""));
+        let profileActive = existing?.isActive ?? true;
 
         if (data.session?.access_token) {
           const authed = createStatelessSupabaseClient(data.session.access_token);
@@ -322,19 +441,66 @@ export async function authenticateUser(
         }
 
         const synced: StoredUser = {
-          id: data.user.id,
+          ...(existing ?? { createdAt: data.user.created_at ?? new Date().toISOString() }),
+          id: existing?.id ?? data.user.id,
           email,
           fullName: profileName,
           phone: profilePhone,
           role: profileRole,
           isActive: profileActive,
-          createdAt: data.user.created_at ?? new Date().toISOString(),
           lastLoginAt: new Date().toISOString(),
           passwordHash: hashPasswordScrypt(password),
         };
 
-        return { next: [...users, synced], result: toSessionUser(synced) };
+        const next =
+          existingIndex >= 0
+            ? users.map((u, idx) => (idx === existingIndex ? synced : u))
+            : [...users, synced];
+        return { next, result: toSessionUser(synced) };
       }
+
+      if (error) {
+        if (/email not confirmed/i.test(error.message)) {
+          throw new ServerAuthError(
+            "Confirm your email address before signing in.",
+            403,
+            "email",
+          );
+        }
+        const isAuthRejection =
+          error.status === 400 ||
+          error.status === 401 ||
+          /invalid login credentials/i.test(error.message);
+        if (isAuthRejection) {
+          if (existing) {
+            throw new ServerAuthError("That password is not correct.", 401, "password");
+          }
+          throw new ServerAuthError(
+            "No account matches that email or password.",
+            401,
+            "email",
+          );
+        }
+      }
+    }
+
+    if (existing) {
+      const check = verifyStoredPassword(email, password, existing.passwordHash);
+      if (!check.valid) {
+        throw new ServerAuthError("That password is not correct.", 401, "password");
+      }
+
+      const signedIn: StoredUser = {
+        ...existing,
+        lastLoginAt: new Date().toISOString(),
+        passwordHash: check.needsUpgrade
+          ? hashPasswordScrypt(password)
+          : existing.passwordHash,
+      };
+
+      const next = [...users];
+      next[existingIndex] = signedIn;
+      return { next, result: toSessionUser(signedIn) };
     }
 
     throw new ServerAuthError("No account matches that email.", 401, "email");
@@ -368,6 +534,67 @@ export async function registerVisitorAccount(input: {
     throw new ServerAuthError("Passwords do not match.", 400, "confirmPassword");
   }
 
+  const admin = getSupabaseAdminClient();
+  if (admin) {
+    const existing = await findSupabaseUser(admin, { email });
+    if (existing) {
+      throw new ServerAuthError("An account already uses this email.", 409, "email");
+    }
+
+    const { data: createdAuth, error: createError } =
+      await admin.auth.admin.createUser({
+        email,
+        password,
+        email_confirm: true,
+        user_metadata: { full_name: fullName, phone },
+      });
+
+    if (createError) {
+      if (/already been registered|already registered|already exists/i.test(createError.message)) {
+        throw new ServerAuthError("An account already uses this email.", 409, "email");
+      }
+      const status =
+        createError.status && createError.status >= 400 && createError.status < 500
+          ? createError.status
+          : 502;
+      throw new ServerAuthError(
+        createError.message || "Could not register account right now.",
+        status,
+        "email",
+      );
+    }
+
+    const userId = createdAuth.user?.id;
+    if (!userId) {
+      throw new ServerAuthError("Could not create account right now.", 502, "email");
+    }
+
+    const { data: row, error: upsertError } = await admin
+      .from("users")
+      .upsert(
+        {
+          id: userId,
+          email,
+          full_name: fullName,
+          phone: phone || null,
+          // Self-registration is always locked to visitor.
+          role: "visitor",
+          is_active: true,
+          password_hash: "supabase-auth-managed",
+        },
+        { onConflict: "id" },
+      )
+      .select("*")
+      .single();
+
+    if (upsertError || !row) {
+      await admin.auth.admin.deleteUser(userId).catch(() => {});
+      throw new ServerAuthError("Could not persist user profile.", 502, "email");
+    }
+
+    return toSessionUser(rowToStoredUser(row));
+  }
+
   return withUsersLock(async (users) => {
     if (users.some((entry) => entry.email === email)) {
       throw new ServerAuthError("An account already uses this email.", 409, "email");
@@ -382,7 +609,19 @@ export async function registerVisitorAccount(input: {
         password,
         options: { data: { full_name: fullName, phone } },
       });
-      if (error && /already registered/i.test(error.message)) {
+      if (error) {
+        if (/already registered|user already/i.test(error.message)) {
+          throw new ServerAuthError("An account already uses this email.", 409, "email");
+        }
+        const status =
+          error.status && error.status >= 400 && error.status < 500 ? error.status : 502;
+        throw new ServerAuthError(
+          error.message || "Could not register account right now.",
+          status,
+          "email",
+        );
+      }
+      if (data.user && Array.isArray(data.user.identities) && data.user.identities.length === 0) {
         throw new ServerAuthError("An account already uses this email.", 409, "email");
       }
       if (data.user?.id) {
@@ -431,6 +670,37 @@ export async function updateCurrentUserProfile(
     throw new ServerAuthError("Enter your full name.", 400, "fullName");
   }
 
+  const admin = getSupabaseAdminClient();
+  if (admin) {
+    const existing = await findSupabaseUser(admin, {
+      id: session.id,
+      email: session.email,
+    });
+    if (!existing) {
+      throw new ServerAuthError("Your session has ended. Sign in again.", 401);
+    }
+
+    const { data: updated, error } = await admin
+      .from("users")
+      .update({
+        full_name: fullName,
+        phone: phone || null,
+        ...(address !== undefined ? { address: address || null } : {}),
+        ...(emergencyContact !== undefined
+          ? { emergency_contact: emergencyContact || null }
+          : {}),
+      })
+      .eq("id", existing.id)
+      .select("*")
+      .single();
+
+    if (error || !updated) {
+      throw new ServerAuthError("Could not update your profile right now.", 502);
+    }
+
+    return toSessionUser(rowToStoredUser(updated));
+  }
+
   return withUsersLock(async (users) => {
     const index = users.findIndex(
       (entry) => entry.id === session.id || entry.email === session.email.toLowerCase(),
@@ -463,6 +733,108 @@ export async function changeCurrentUserPassword(
     throw new ServerAuthError(issue, 400, "password");
   }
 
+  const admin = getSupabaseAdminClient();
+  if (admin) {
+    const current = await findSupabaseUser(admin, {
+      id: session.id,
+      email: session.email,
+    });
+    if (!current) {
+      throw new ServerAuthError("Your session has ended. Sign in again.", 401);
+    }
+    if (currentPassword === nextPassword) {
+      throw new ServerAuthError(
+        "Choose a password you have not used before.",
+        400,
+        "password",
+      );
+    }
+
+    if (isVerifiableLocalHash(current.passwordHash)) {
+      const check = verifyStoredPassword(
+        current.email,
+        currentPassword,
+        current.passwordHash,
+      );
+      if (!check.valid) {
+        throw new ServerAuthError(
+          "Your current password is not correct.",
+          400,
+          "password",
+        );
+      }
+
+      const { error: updateErr } = await admin
+        .from("users")
+        .update({ password_hash: hashPasswordScrypt(nextPassword) })
+        .eq("id", current.id);
+      if (updateErr) {
+        throw new ServerAuthError("Could not update your password.", 502, "password");
+      }
+
+      // If a matching Supabase Auth record also exists, keep its password in sync.
+      const { data: authLookup } = await admin.auth.admin.getUserById(current.id);
+      if (authLookup.user) {
+        await admin.auth.admin.updateUserById(current.id, {
+          password: nextPassword,
+        });
+      }
+      return;
+    }
+
+    const sb = createStatelessSupabaseClient();
+    if (!sb) {
+      throw new ServerAuthError(
+        "Could not reach authentication service to verify password.",
+        502,
+        "password",
+      );
+    }
+
+    const { error: signInErr } = await sb.auth.signInWithPassword({
+      email: current.email,
+      password: currentPassword,
+    });
+    if (signInErr) {
+      if (/email not confirmed/i.test(signInErr.message)) {
+        throw new ServerAuthError(
+          "Confirm your email address before changing your password.",
+          403,
+          "password",
+        );
+      }
+      const isWrongPassword =
+        signInErr.status === 400 ||
+        signInErr.status === 401 ||
+        /invalid login credentials/i.test(signInErr.message);
+      if (isWrongPassword) {
+        throw new ServerAuthError(
+          "Your current password is not correct.",
+          400,
+          "password",
+        );
+      }
+      throw new ServerAuthError(
+        "Could not reach authentication service to verify password.",
+        502,
+        "password",
+      );
+    }
+
+    const { error: adminUpdateErr } = await admin.auth.admin.updateUserById(
+      current.id,
+      { password: nextPassword },
+    );
+    if (adminUpdateErr) {
+      throw new ServerAuthError(
+        adminUpdateErr.message || "Could not update your password.",
+        400,
+        "password",
+      );
+    }
+    return;
+  }
+
   await withUsersLock(async (users) => {
     const index = users.findIndex(
       (entry) => entry.id === session.id || entry.email === session.email.toLowerCase(),
@@ -472,20 +844,76 @@ export async function changeCurrentUserPassword(
     }
 
     const current = users[index];
-    const check = verifyStoredPassword(current.email, currentPassword, current.passwordHash);
-    if (!check.valid) {
-      throw new ServerAuthError(
-        "Your current password is not correct.",
-        400,
-        "password",
-      );
-    }
     if (currentPassword === nextPassword) {
       throw new ServerAuthError(
         "Choose a password you have not used before.",
         400,
         "password",
       );
+    }
+
+    const isLocalOnly = current.id.startsWith("usr_");
+    const sb = !isLocalOnly ? createStatelessSupabaseClient() : null;
+
+    if (sb) {
+      const { data, error } = await sb.auth.signInWithPassword({
+        email: current.email,
+        password: currentPassword,
+      });
+      if (error) {
+        if (/email not confirmed/i.test(error.message)) {
+          throw new ServerAuthError(
+            "Confirm your email address before changing your password.",
+            403,
+            "password",
+          );
+        }
+        const isWrongPassword =
+          error.status === 400 ||
+          error.status === 401 ||
+          /invalid login credentials/i.test(error.message);
+        if (isWrongPassword) {
+          throw new ServerAuthError(
+            "Your current password is not correct.",
+            400,
+            "password",
+          );
+        }
+        throw new ServerAuthError(
+          "Could not reach authentication service to verify password.",
+          502,
+          "password",
+        );
+      }
+
+      if (data.session?.access_token) {
+        const authed = createStatelessSupabaseClient(data.session.access_token);
+        if (authed) {
+          const { error: updateError } = await authed.auth.updateUser({
+            password: nextPassword,
+          });
+          if (updateError) {
+            throw new ServerAuthError(
+              updateError.message || "Could not update your password.",
+              400,
+              "password",
+            );
+          }
+        }
+      }
+    } else {
+      const check = verifyStoredPassword(
+        current.email,
+        currentPassword,
+        current.passwordHash,
+      );
+      if (!check.valid) {
+        throw new ServerAuthError(
+          "Your current password is not correct.",
+          400,
+          "password",
+        );
+      }
     }
 
     const next = [...users];
@@ -498,7 +926,19 @@ export async function changeCurrentUserPassword(
 }
 
 export async function listServerUsers(): Promise<SessionUser[]> {
-  const users = await readUsersFromDisk();
+  const admin = getSupabaseAdminClient();
+  if (admin) {
+    const { data, error } = await admin
+      .from("users")
+      .select("*")
+      .order("created_at", { ascending: false });
+    if (error || !data) {
+      throw new ServerAuthError("Could not load user directory.", 502);
+    }
+    return data.map((row) => toSessionUser(rowToStoredUser(row)));
+  }
+
+  const users = await usersStore.read();
   return users
     .map(toSessionUser)
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
@@ -517,6 +957,43 @@ export async function updateServerUserRole(
       "You cannot change your own role. Ask another staff member.",
       400,
     );
+  }
+
+  const admin = getSupabaseAdminClient();
+  if (admin) {
+    const target = await findSupabaseUser(admin, { id: userId });
+    if (!target) {
+      throw new ServerAuthError("That account no longer exists.", 404);
+    }
+    if (target.role === role) {
+      return toSessionUser(target);
+    }
+    if (role === "visitor" && target.role === "admin") {
+      const { count, error: countErr } = await admin
+        .from("users")
+        .select("id", { count: "exact", head: true })
+        .eq("role", "admin");
+      if (countErr) {
+        throw new ServerAuthError("Could not verify remaining staff accounts.", 502);
+      }
+      if ((count ?? 0) <= 1) {
+        throw new ServerAuthError(
+          "This is the last staff account. Promote someone else first.",
+          400,
+        );
+      }
+    }
+
+    const { data: updated, error } = await admin
+      .from("users")
+      .update({ role })
+      .eq("id", target.id)
+      .select("*")
+      .single();
+    if (error || !updated) {
+      throw new ServerAuthError("Could not update role right now.", 502);
+    }
+    return toSessionUser(rowToStoredUser(updated));
   }
 
   return withUsersLock(async (users) => {
@@ -557,6 +1034,38 @@ export async function setServerUserActive(
   }
   if (actor.id === userId && !isActive) {
     throw new ServerAuthError("You cannot suspend your own account.", 400);
+  }
+
+  const admin = getSupabaseAdminClient();
+  if (admin) {
+    const target = await findSupabaseUser(admin, { id: userId });
+    if (!target) {
+      throw new ServerAuthError("That account no longer exists.", 404);
+    }
+    if (!isActive && target.role === "admin") {
+      const { count, error: countErr } = await admin
+        .from("users")
+        .select("id", { count: "exact", head: true })
+        .eq("role", "admin")
+        .eq("is_active", true);
+      if (countErr) {
+        throw new ServerAuthError("Could not verify active staff accounts.", 502);
+      }
+      if ((count ?? 0) <= 1) {
+        throw new ServerAuthError("This is the last active staff account.", 400);
+      }
+    }
+
+    const { data: updated, error } = await admin
+      .from("users")
+      .update({ is_active: isActive })
+      .eq("id", target.id)
+      .select("*")
+      .single();
+    if (error || !updated) {
+      throw new ServerAuthError("Could not update account status right now.", 502);
+    }
+    return toSessionUser(rowToStoredUser(updated));
   }
 
   return withUsersLock(async (users) => {

@@ -1,0 +1,37 @@
+services:
+  mailpit:
+    image: axllent/mailpit:latest
+    container_name: naujan-lake-mailpit
+    restart: unless-stopped
+    ports:
+      - "1025:1025"
+      - "8025:8025"
+    environment:
+      MP_SMTP_AUTH_ACCEPT_ANY: "true"
+      MP_SMTP_AUTH_ALLOW_INSECURE: "true"
+
+  ghost:
+    image: ghost:5-alpine
+    container_name: naujan-lake-ghost
+    restart: unless-stopped
+    depends_on:
+      - mailpit
+    ports:
+      - "2368:2368"
+    environment:
+      NODE_ENV: production
+      url: http://localhost:2368
+      database__client: sqlite3
+      database__connection__filename: /var/lib/ghost/content/data/ghost.db
+      security__staffDeviceVerification: "false"
+      mail__transport: SMTP
+      mail__options__host: mailpit
+      mail__options__port: 1025
+      mail__options__secure: "false"
+      mail__options__ignoreTLS: "true"
+      mail__from: "'Naujan Lake CMS' <admin@naujanlake.gov.ph>"
+    volumes:
+      - ghost-content:/var/lib/ghost/content
+
+volumes:
+  ghost-content:

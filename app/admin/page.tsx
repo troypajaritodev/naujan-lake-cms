@@ -2,10 +2,11 @@ import type { Metadata } from "next";
 import { connection } from "next/server";
 import AdminOverview from "@/components/admin/admin-overview";
 import { getArchivedAdvisories, getSortedAdvisories } from "@/lib/advisories";
-import { readOverrides } from "@/lib/content-store";
+import { getGhostStatus } from "@/lib/ghost";
 import { getLakeZones, getParkRules } from "@/lib/guidelines-data";
 import { getSpecies, getWildlifeGroups } from "@/lib/species";
-import { getToursForAdmin } from "@/lib/tours";
+import { isSupabaseAdminConfigured } from "@/lib/supabase/admin";
+import { getTours, getToursForAdmin } from "@/lib/tours";
 
 export const metadata: Metadata = {
   title: "Overview · Admin",
@@ -56,20 +57,22 @@ function addDays(days: number): string {
 export default async function AdminOverviewPage() {
   await connection();
 
-  const [published, archived, tours, overrides, species, groups, rules, zones] =
+  const [published, archived, tours, onSale, species, groups, rules, zones] =
     await Promise.all([
       getSortedAdvisories(),
       getArchivedAdvisories(),
       getToursForAdmin(),
-      readOverrides(),
+      getTours(),
       getSpecies(),
       getWildlifeGroups(),
       getParkRules(),
       getLakeZones(),
     ]);
 
-  const unpublished = new Set(overrides.tours.unpublished);
-  const onSale = tours.filter((tour) => !unpublished.has(tour.slug));
+  const ghost = getGhostStatus();
+  const storageMode = isSupabaseAdminConfigured()
+    ? "supabase-postgres"
+    : "local-json";
   const pinned = published.find((advisory) => advisory.isActiveBanner);
   const critical = published.filter(
     (advisory) => advisory.severity === "CRITICAL",
@@ -92,6 +95,8 @@ export default async function AdminOverviewPage() {
   return (
     <AdminOverview
       today={todayLabel()}
+      ghost={ghost}
+      storageMode={storageMode}
       notices={{
         published: published.length,
         archived: archived.length,

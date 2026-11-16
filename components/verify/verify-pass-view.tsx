@@ -9,44 +9,82 @@ import {
   CheckCircle2,
   QrCode,
   Search,
+  ShieldAlert,
   ShieldCheck,
   Users,
 } from "lucide-react";
 import BrandMark from "@/components/brand-mark";
 import { useAuth } from "@/components/auth-provider";
 import { setInquiryStatus, useInquiries } from "@/lib/inquiries";
+import {
+  isBoardableStatus,
+  type Inquiry,
+  type InquiryStatus,
+  type PaymentStatus,
+} from "@/lib/inquiries-shared";
 import { INQUIRY_STATUS_META, PAYMENT_STATUS_META } from "@/lib/inquiry-status";
+import type { PassTokenPayload } from "@/lib/pass-token";
 
-type VerifyQuery = {
-  ref?: string;
-  guest?: string;
-  tour?: string;
-  date?: string;
-  guests?: string;
-  pay?: string;
+type VerifyPassViewProps = {
+  initialRef: string;
+  verifiedPass: PassTokenPayload | null;
+  tokenInvalid: boolean;
+  liveStatus: InquiryStatus | null;
+  livePaymentStatus: PaymentStatus | null;
+  tokenLedgerMissing: boolean;
+  serverInquiry: Inquiry | null;
 };
 
-export default function VerifyPassView({ initial }: { initial: VerifyQuery }) {
+export default function VerifyPassView({
+  initialRef,
+  verifiedPass,
+  tokenInvalid,
+  liveStatus,
+  livePaymentStatus,
+  tokenLedgerMissing,
+  serverInquiry,
+}: VerifyPassViewProps) {
   const inquiries = useInquiries();
   const { user } = useAuth();
-  const [lookup, setLookup] = useState(initial.ref ?? "");
+  const [lookup, setLookup] = useState(initialRef);
   const [busy, setBusy] = useState(false);
 
   const normalizedRef = lookup.trim().toUpperCase();
-  const matched = useMemo(
-    () =>
-      normalizedRef
-        ? inquiries.find((item) => item.reference.toUpperCase() === normalizedRef)
-        : undefined,
-    [inquiries, normalizedRef],
-  );
+  const matched = useMemo(() => {
+    if (!normalizedRef) return undefined;
+    const fromClient = inquiries.find(
+      (item) => item.reference.toUpperCase() === normalizedRef,
+    );
+    if (fromClient) return fromClient;
+    if (
+      serverInquiry &&
+      serverInquiry.reference.toUpperCase() === normalizedRef
+    ) {
+      return serverInquiry;
+    }
+    return undefined;
+  }, [inquiries, normalizedRef, serverInquiry]);
 
-  const hasSignedPayload = Boolean(initial.ref && initial.tour && initial.guest);
-  const displayGuest = matched?.fullName ?? initial.guest ?? "—";
-  const displayTour = matched?.tourTitle ?? initial.tour ?? "—";
-  const displayDate = matched?.preferredDate ?? initial.date ?? "—";
-  const displayParty = matched?.partySize ?? (initial.guests ? Number(initial.guests) : 0);
-  const displayPayment = matched?.paymentStatus ?? initial.pay ?? "UNPAID";
+  const activeVerified = useMemo(() => {
+    if (!verifiedPass) return undefined;
+    if (!normalizedRef || normalizedRef === verifiedPass.ref.toUpperCase()) {
+      return verifiedPass;
+    }
+    return undefined;
+  }, [verifiedPass, normalizedRef]);
+
+  const effectiveStatus: InquiryStatus | undefined =
+    matched?.status ??
+    (activeVerified ? (liveStatus ?? activeVerified.status) : undefined);
+  const displayGuest = matched?.fullName ?? activeVerified?.guest ?? "—";
+  const displayTour = matched?.tourTitle ?? activeVerified?.tour ?? "—";
+  const displayDate = matched?.preferredDate ?? activeVerified?.date ?? "—";
+  const displayParty = matched?.partySize ?? activeVerified?.guests ?? 0;
+  const displayPayment =
+    matched?.paymentStatus ??
+    livePaymentStatus ??
+    activeVerified?.pay ??
+    "UNPAID";
 
   const paymentMeta =
     PAYMENT_STATUS_META[
@@ -54,10 +92,16 @@ export default function VerifyPassView({ initial }: { initial: VerifyQuery }) {
     ] ?? PAYMENT_STATUS_META.UNPAID;
 
   const isBoardable = matched
-    ? matched.status === "ON_PROCESS" ||
-      matched.status === "CONFIRMED" ||
-      matched.status === "COMPLETED"
-    : hasSignedPayload;
+    ? isBoardableStatus(matched.status)
+    : Boolean(
+        activeVerified &&
+          !tokenLedgerMissing &&
+          effectiveStatus &&
+          isBoardableStatus(effectiveStatus),
+      );
+
+  const showTamperedWarning =
+    tokenInvalid && (!normalizedRef || normalizedRef === initialRef.toUpperCase());
 
   async function markCheckedIn(nextStatus: "CONFIRMED" | "COMPLETED") {
     if (!matched || user?.role !== "admin") return;
@@ -125,31 +169,53 @@ export default function VerifyPassView({ initial }: { initial: VerifyQuery }) {
               </div>
             </div>
 
-            {normalizedRef && (matched || hasSignedPayload) ? (
+            {showTamperedWarning ? (
+              <div
+                role="alert"
+                className="flex items-start gap-3 rounded-2xl bg-alert-50 px-4 py-3.5 text-[13px] text-alert-800 ring-1 ring-alert-500/30 ring-inset"
+              >
+                <ShieldAlert className="mt-0.5 size-4 shrink-0 text-alert-700" />
+                <div>
+                  <p className="font-semibold">
+                    Invalid or expired boarding pass signature
+                  </p>
+                  <p className="mt-0.5 text-[12px] opacity-85">
+                    This QR token could not be verified. Ask the visitor to reopen
+                    their active pass from /account or verify the reference code while
+                    signed in as park staff.
+                  </p>
+                </div>
+              </div>
+            ) : null}
+
+            {(normalizedRef && matched) || activeVerified ? (
               <div className="space-y-5 rounded-2xl bg-sand-50 p-5 ring-1 ring-ink/10">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
                     <p className="font-mono text-[12px] font-semibold text-lake-800">
-                      {matched?.reference ?? normalizedRef}
+                      {matched?.reference ?? activeVerified?.ref ?? normalizedRef}
                     </p>
                     <h2 className="mt-0.5 font-display text-[21px] leading-snug text-ink">
                       {displayTour}
                     </h2>
                   </div>
 
-                  {matched ? (
-                    <span
-                      className={`rounded-full px-3 py-1 text-[10.5px] font-semibold tracking-[0.12em] uppercase ring-1 ring-inset ${
-                        INQUIRY_STATUS_META[matched.status].chip
-                      }`}
-                    >
-                      {INQUIRY_STATUS_META[matched.status].label}
-                    </span>
-                  ) : (
-                    <span className="rounded-full bg-lake-50 px-3 py-1 text-[10.5px] font-semibold tracking-[0.12em] text-lake-800 uppercase ring-1 ring-lake-600/20">
-                      Signed QR Payload
-                    </span>
-                  )}
+                  <div className="flex flex-wrap items-center gap-2">
+                    {activeVerified ? (
+                      <span className="rounded-full bg-lake-50 px-3 py-1 text-[10.5px] font-semibold tracking-[0.12em] text-lake-800 uppercase ring-1 ring-lake-600/20">
+                        Signed QR Pass
+                      </span>
+                    ) : null}
+                    {effectiveStatus ? (
+                      <span
+                        className={`rounded-full px-3 py-1 text-[10.5px] font-semibold tracking-[0.12em] uppercase ring-1 ring-inset ${
+                          INQUIRY_STATUS_META[effectiveStatus].chip
+                        }`}
+                      >
+                        {INQUIRY_STATUS_META[effectiveStatus].label}
+                      </span>
+                    ) : null}
+                  </div>
                 </div>
 
                 <div
@@ -168,12 +234,20 @@ export default function VerifyPassView({ initial }: { initial: VerifyQuery }) {
                     <p className="font-semibold">
                       {isBoardable
                         ? "Valid boarding pass — cleared for park briefing"
-                        : `Pass not yet cleared for boarding (${matched ? INQUIRY_STATUS_META[matched.status].label : "Pending"})`}
+                        : tokenLedgerMissing && activeVerified
+                          ? "Pass revoked — booking record was removed from the ledger"
+                          : `Pass not yet cleared for boarding (${
+                              effectiveStatus
+                                ? INQUIRY_STATUS_META[effectiveStatus].label
+                                : "Pending"
+                            })`}
                     </p>
                     <p className="mt-0.5 text-[12px] opacity-85">
                       {matched
                         ? "Matched directly against the active Naujan Lake booking ledger."
-                        : "Decoded from QR ticket token. Rangers on duty can cross-check in /admin/inquiries."}
+                        : tokenLedgerMissing
+                          ? "The signature is valid, but this booking is no longer active on the server ledger."
+                          : "Cryptographically verified HMAC pass confirmed active on the server ledger."}
                     </p>
                   </div>
                 </div>

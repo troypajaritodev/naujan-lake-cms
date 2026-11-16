@@ -74,6 +74,8 @@ export function parseInquiryPayload(
     : undefined;
 
   const ratePerPerson = asNonNegativeNumber(payload.ratePerPerson);
+  const packageSubtotal = asNonNegativeNumber(payload.packageSubtotal);
+  const facilitationFee = asNonNegativeNumber(payload.facilitationFee);
   const totalAmount = asNonNegativeNumber(payload.totalAmount);
   const firstPaymentAmount = asNonNegativeNumber(payload.firstPaymentAmount);
   const balanceAmount = asNonNegativeNumber(payload.balanceAmount);
@@ -96,6 +98,8 @@ export function parseInquiryPayload(
     status: "PENDING",
     createdAt: asString(payload.createdAt, 40) || new Date().toISOString(),
     ...(ratePerPerson !== undefined ? { ratePerPerson } : {}),
+    ...(packageSubtotal !== undefined ? { packageSubtotal } : {}),
+    ...(facilitationFee !== undefined ? { facilitationFee } : {}),
     ...(totalAmount !== undefined ? { totalAmount } : {}),
     ...(firstPaymentAmount !== undefined ? { firstPaymentAmount } : {}),
     ...(balanceAmount !== undefined ? { balanceAmount } : {}),

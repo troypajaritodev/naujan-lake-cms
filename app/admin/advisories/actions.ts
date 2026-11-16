@@ -17,14 +17,26 @@
 import { updateTag } from "next/cache";
 import {
   formatAdvisoryDate,
+  getArchivedAdvisories,
+  getSortedAdvisories,
   severityLabels,
   type Advisory,
   type AdvisorySeverity,
 } from "@/lib/advisories";
-import { readOverrides, updateOverrides } from "@/lib/content-store";
+import {
+  readOverrides,
+  updateOverrides,
+  type AdvisoryPatch,
+} from "@/lib/content-store";
+import {
+  formatGhostSyncSuffix,
+  pushAdvisoryToGhost,
+  syncGhostStatusOrUpsert,
+} from "@/lib/ghost-cms";
 import { dispatchAdvisoryDigest } from "@/lib/notifications";
 import { cleanEmail, cleanText } from "@/lib/sanitize";
 import { requireAdminSession } from "@/lib/server-auth";
+import { listServerSubscribers } from "@/lib/server-subscribers";
 
 export type ActionResult =
   | { ok: true; slug: string; message: string }
@@ -156,7 +168,7 @@ export async function saveAdvisoryAction(
     return { ok: false, field: "title", message: "That headline has no usable letters in it." };
   }
 
-  await updateOverrides((current) => {
+  const nextOverrides = await updateOverrides((current) => {
     const createdIndex = current.advisories.created.findIndex(
       (advisory) => advisory.slug === record.slug,
     );
@@ -185,33 +197,68 @@ export async function saveAdvisoryAction(
     }
 
     // A seeded or database row: keep it as a patch so a later sync of the base
-    // rows does not lose the edit.
+    // rows does not lose the edit, while passing `null` to clear optional fields.
+    const patch: AdvisoryPatch = {
+      title: record.title,
+      severity: record.severity,
+      severityLabel: record.severityLabel,
+      category: record.category,
+      publishedAt: record.publishedAt,
+      excerpt: record.excerpt,
+      body: record.body,
+      isActiveBanner: record.isActiveBanner,
+      effectiveUntil: effectiveUntil || null,
+      actions: actions.length > 0 ? actions : null,
+    };
+
     return {
       ...current,
       advisories: {
         ...current.advisories,
-        edited: { ...current.advisories.edited, [record.slug]: record },
+        edited: { ...current.advisories.edited, [record.slug]: patch },
       },
     };
   });
 
+  const isArchived = nextOverrides.advisories.archived.includes(record.slug);
+  const ghostRes = await pushAdvisoryToGhost(
+    record,
+    isArchived ? "draft" : "published",
+  );
+
   updateTag("advisories");
 
   let dispatchNote = "";
-  if (dispatchSubscribers && recipients.length > 0) {
-    const digest = await dispatchAdvisoryDigest(
-      {
-        slug: record.slug,
-        title: record.title,
-        severity: record.severity,
-        severityLabel: record.severityLabel,
-        dateISO: record.publishedAt,
-        date: formatAdvisoryDate(record.publishedAt),
-        excerpt: record.excerpt,
-      },
-      recipients,
-    );
-    dispatchNote = ` Advisory alert dispatched to ${digest.sent} subscriber${digest.sent === 1 ? "" : "s"}.`;
+  if (dispatchSubscribers) {
+    const serverRecipients = (await listServerSubscribers())
+      .filter(
+        (sub) =>
+          sub.status === "ACTIVE" && sub.topics.includes("advisories"),
+      )
+      .map((sub) => sub.email);
+    const mergedRecipients = [...new Set([...serverRecipients, ...recipients])];
+
+    if (mergedRecipients.length > 0) {
+      const digest = await dispatchAdvisoryDigest(
+        {
+          slug: record.slug,
+          title: record.title,
+          severity: record.severity,
+          severityLabel: record.severityLabel,
+          dateISO: record.publishedAt,
+          date: formatAdvisoryDate(record.publishedAt),
+          excerpt: record.excerpt,
+        },
+        mergedRecipients,
+      );
+      if (digest.sent > 0) {
+        dispatchNote = ` Advisory alert dispatched to ${digest.sent} subscriber${digest.sent === 1 ? "" : "s"}.`;
+      } else if (digest.demoLogged > 0) {
+        dispatchNote = ` Email delivery is running in demo mode (${digest.demoLogged} alert preview${digest.demoLogged === 1 ? "" : "s"} logged).`;
+      } else if (digest.failed > 0) {
+        dispatchNote = ` Saved, though ${digest.failed} alert email${digest.failed === 1 ? "" : "s"} failed to send.`;
+      }
+    }
   }
 
   return {
@@ -220,7 +267,9 @@ export async function saveAdvisoryAction(
     message:
       (existingSlug
         ? `Updated “${record.title}”. The public board is live.`
-        : `Published “${record.title}”. It is on the board now.`) + dispatchNote,
+        : `Published “${record.title}”. It is on the board now.`) +
+      dispatchNote +
+      formatGhostSyncSuffix(ghostRes),
   };
 }
 
@@ -237,6 +286,11 @@ export async function setAdvisoryArchivedAction(
     return { ok: false, message: "Missing notice." };
   }
 
+  const candidates = archived
+    ? await getSortedAdvisories()
+    : await getArchivedAdvisories();
+  const target = candidates.find((entry) => entry.slug === cleanSlug);
+
   await updateOverrides((current) => {
     const others = current.advisories.archived.filter((item) => item !== cleanSlug);
     return {
@@ -248,14 +302,23 @@ export async function setAdvisoryArchivedAction(
     };
   });
 
+  const ghostRes = await syncGhostStatusOrUpsert(
+    cleanSlug,
+    archived ? "draft" : "published",
+    target
+      ? () => pushAdvisoryToGhost(target, archived ? "draft" : "published")
+      : undefined,
+  );
+
   updateTag("advisories");
 
   return {
     ok: true,
     slug: cleanSlug,
-    message: archived
-      ? "Taken off the public board. It stays here under Archived."
-      : "Back on the public board.",
+    message:
+      (archived
+        ? "Taken off the public board. It stays here under Archived."
+        : "Back on the public board.") + formatGhostSyncSuffix(ghostRes),
   };
 }
 

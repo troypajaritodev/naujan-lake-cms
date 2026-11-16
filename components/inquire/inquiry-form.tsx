@@ -25,9 +25,13 @@ import { AuthField } from "@/components/auth-shell";
 import { useAuth } from "@/components/auth-provider";
 import type { SessionUser } from "@/lib/auth";
 import {
+  computeBookingPricing,
   createInquiry,
+  FACILITATION_FEE_PHP,
   getReservedSeatsForDate,
+  slotKey,
   useInquiries,
+  useReservedSeatsBySlot,
   type Inquiry,
   type PaymentMethod,
 } from "@/lib/inquiries";
@@ -174,7 +178,9 @@ function InquiryFields({
   tours: Tour[];
 }) {
   const allInquiries = useInquiries();
+  const reservedSlots = useReservedSeatsBySlot();
   const errorRef = useRef<HTMLDivElement | null>(null);
+  const handledReturnRef = useRef<string | null>(null);
   const todayIso = useMemo(() => {
     const now = new Date();
     const y = now.getFullYear();
@@ -231,13 +237,16 @@ function InquiryFields({
     const cleanUrl = window.location.pathname;
 
     if (status === "cancelled") {
+      window.sessionStorage.removeItem(PENDING_CHECKOUT_KEY);
       window.history.replaceState({}, "", cleanUrl);
       return;
     }
 
     if (status === "success" && sessionId) {
+      if (handledReturnRef.current === sessionId) return;
+      handledReturnRef.current = sessionId;
+
       const rawDraft = window.sessionStorage.getItem(PENDING_CHECKOUT_KEY);
-      window.sessionStorage.removeItem(PENDING_CHECKOUT_KEY);
       window.history.replaceState({}, "", cleanUrl);
       if (!rawDraft) return;
 
@@ -248,27 +257,30 @@ function InquiryFields({
           const verifyRes = await fetch(
             `/api/payments/status?session_id=${encodeURIComponent(sessionId)}`,
           );
-          const verifyData = (await verifyRes.json()) as {
+          const verifyData = (await verifyRes.json().catch(() => ({}))) as {
             paid?: boolean;
             paymentReference?: string;
+            error?: string;
           };
-          if (!verifyData.paid) {
-            reportError("Payment verification is still pending. Enter your reference manually or try again.");
+          if (!verifyRes.ok || !verifyData.paid) {
+            reportError(
+              verifyData.error ??
+                "Payment verification is still pending. Enter your reference manually or try again.",
+            );
             return;
           }
           const inquiry = await createInquiry({
             ...draft,
             paymentReference: verifyData.paymentReference ?? sessionId,
           });
-          void fetch("/api/inquiries/notify", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(inquiry),
-            keepalive: true,
-          }).catch(() => {});
+          window.sessionStorage.removeItem(PENDING_CHECKOUT_KEY);
           setSent(inquiry);
-        } catch {
-          reportError("Could not finalize your returning payment session. Please retry.");
+        } catch (err) {
+          reportError(
+            err instanceof Error
+              ? err.message
+              : "Could not finalize your returning payment session. Please retry.",
+          );
         } finally {
           setPending(false);
         }
@@ -283,28 +295,45 @@ function InquiryFields({
 
   const seatAvailability = useMemo(() => {
     if (!selected || !values.preferredDate) return null;
-    const reserved = getReservedSeatsForDate(
-      allInquiries,
-      selected.slug,
-      values.preferredDate,
-    );
+    const serverReserved =
+      reservedSlots[slotKey(selected.slug, values.preferredDate)];
+    const reserved =
+      typeof serverReserved === "number"
+        ? serverReserved
+        : getReservedSeatsForDate(
+            allInquiries,
+            selected.slug,
+            values.preferredDate,
+          );
     const remaining = Math.max(0, selected.maxCapacity - reserved);
     return {
       capacity: selected.maxCapacity,
       reserved,
       remaining,
     };
-  }, [allInquiries, selected, values.preferredDate]);
+  }, [allInquiries, reservedSlots, selected, values.preferredDate]);
 
   const pricing = useMemo(() => {
     const rate = selected?.ratePerPerson ?? 0;
     const rawParty = Number(values.partySize);
     const guests =
       Number.isFinite(rawParty) && rawParty >= 1 ? Math.trunc(rawParty) : 1;
-    const total = rate * guests;
-    const firstPayment = Math.round(total * values.firstPaymentRate);
-    const balance = Math.max(0, total - firstPayment);
-    return { rate, guests, total, firstPayment, balance };
+    const breakdown = computeBookingPricing(
+      rate,
+      guests,
+      selected ? FACILITATION_FEE_PHP : 0,
+    );
+    const firstPayment = Math.round(breakdown.totalAmount * values.firstPaymentRate);
+    const balance = Math.max(0, breakdown.totalAmount - firstPayment);
+    return {
+      rate,
+      guests,
+      subtotal: breakdown.packageSubtotal,
+      facilitationFee: breakdown.facilitationFee,
+      total: breakdown.totalAmount,
+      firstPayment,
+      balance,
+    };
   }, [selected, values.partySize, values.firstPaymentRate]);
 
   if (tours.length === 0) {
@@ -354,7 +383,12 @@ function InquiryFields({
   ) {
     if (!selected) return;
     const party = Number(values.partySize);
-    const totalAmount = selected.ratePerPerson * party;
+    const breakdown = computeBookingPricing(
+      selected.ratePerPerson,
+      party,
+      FACILITATION_FEE_PHP,
+    );
+    const totalAmount = breakdown.totalAmount;
     const isCash = values.paymentMethod === "ON_SITE_CASH";
     const firstPaymentAmount = isCash
       ? 0
@@ -372,6 +406,10 @@ function InquiryFields({
       partySize: party,
       message: values.message.trim(),
       ratePerPerson: selected.ratePerPerson,
+      packageSubtotal: breakdown.packageSubtotal,
+      facilitationFee: breakdown.facilitationFee,
+      operatorCommission: breakdown.operatorCommission,
+      platformRevenue: breakdown.platformRevenue,
       totalAmount,
       firstPaymentRate: values.firstPaymentRate,
       firstPaymentAmount,
@@ -385,15 +423,6 @@ function InquiryFields({
         values.fullName.trim(),
       ...(!isCash && paymentProofUrl ? { paymentProofUrl } : {}),
     });
-
-    // The record is already saved locally; the emails are a best-effort side
-    // effect, so a failed send never blocks the confirmation screen.
-    void fetch("/api/inquiries/notify", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(inquiry),
-      keepalive: true,
-    }).catch(() => {});
 
     setSent(inquiry);
   }
@@ -497,13 +526,19 @@ function InquiryFields({
           return;
         }
 
-        // Built-in Interactive Gateway Authorization Modal when PayMongo keys are not set
-        setGatewayModal(true);
-        return;
+        if (data.mode === "sandbox") {
+          // Built-in interactive gateway authorization modal when PayMongo keys are not set.
+          setGatewayModal(true);
+          return;
+        }
+
+        return reportError(
+          data.error ?? "Payment gateway returned an unexpected response.",
+        );
       } catch {
-        // Offline / network edge fallback still lets the interactive gateway complete locally
-        setGatewayModal(true);
-        return;
+        return reportError(
+          "Unable to reach payment gateway right now. Try again or use Manual Transfer.",
+        );
       } finally {
         setPending(false);
       }
@@ -953,8 +988,20 @@ function InquiryFields({
               {peso.format(pricing.rate)})
             </span>
             <span className="font-mono text-ink">
-              {peso.format(pricing.total)}
+              {peso.format(pricing.subtotal)}
             </span>
+          </div>
+          {pricing.facilitationFee > 0 && (
+            <div className="mt-1.5 flex justify-between text-[12.5px] text-ink-soft/80">
+              <span>Booking facilitation fee</span>
+              <span className="font-mono text-ink">
+                {peso.format(pricing.facilitationFee)}
+              </span>
+            </div>
+          )}
+          <div className="mt-2 flex justify-between border-t border-ink/8 pt-2 text-[12.5px] font-medium text-ink">
+            <span>Total booking payable</span>
+            <span className="font-mono">{peso.format(pricing.total)}</span>
           </div>
           {!isCash ? (
             <>

@@ -22,6 +22,7 @@ import {
   Trash2,
   X,
 } from "lucide-react";
+import RevenueBreakdownCard from "@/components/admin/revenue-breakdown-card";
 import StatCard from "@/components/admin/stat-card";
 import BookingQrPass, { buildVerifyPath } from "@/components/booking-qr-pass";
 import { useAuth } from "@/components/auth-provider";
@@ -31,6 +32,8 @@ import {
   addInquiryMessage,
   canCancelInquiry,
   deleteInquiry,
+  formatPhpAmount,
+  getBookingEconomics,
   getReservedSeatsForDate,
   InquiryError,
   setInquiryStatus,
@@ -482,6 +485,10 @@ export default function AdminInquiriesPage() {
         "Lead Visitor",
         "Email",
         "Phone",
+        "Package Tariff PHP",
+        "Facilitation Fee PHP",
+        "Operator Commission 8% PHP",
+        "Platform Revenue PHP",
         "Total PHP",
         "First Payment PHP",
         "Balance Due PHP",
@@ -489,23 +496,30 @@ export default function AdminInquiriesPage() {
         "Payment Ref",
         "Submitted At",
       ],
-      visible.map((item) => [
-        item.reference,
-        INQUIRY_STATUS_META[item.status].label,
-        PAYMENT_STATUS_META[item.paymentStatus ?? "UNPAID"].label,
-        item.tourTitle,
-        item.preferredDate,
-        item.partySize,
-        item.fullName,
-        item.email,
-        item.phone,
-        item.totalAmount ?? 0,
-        item.firstPaymentAmount ?? 0,
-        item.balanceAmount ?? 0,
-        item.paymentMethod ? PAYMENT_METHOD_META[item.paymentMethod].label : "",
-        item.paymentReference ?? "",
-        item.createdAt,
-      ]),
+      visible.map((item) => {
+        const econ = getBookingEconomics(item);
+        return [
+          item.reference,
+          INQUIRY_STATUS_META[item.status].label,
+          PAYMENT_STATUS_META[item.paymentStatus ?? "UNPAID"].label,
+          item.tourTitle,
+          item.preferredDate,
+          item.partySize,
+          item.fullName,
+          item.email,
+          item.phone,
+          econ.packageSubtotal,
+          econ.facilitationFee,
+          econ.operatorCommission,
+          econ.platformRevenue,
+          item.totalAmount ?? 0,
+          item.firstPaymentAmount ?? 0,
+          item.balanceAmount ?? 0,
+          item.paymentMethod ? PAYMENT_METHOD_META[item.paymentMethod].label : "",
+          item.paymentReference ?? "",
+          item.createdAt,
+        ];
+      }),
     );
   }
 
@@ -724,6 +738,8 @@ export default function AdminInquiriesPage() {
           </table>
         </section>
       </div>
+
+      <RevenueBreakdownCard inquiries={inquiries} showPackageTable />
 
       {/* Bookings Management Queue */}
       <section className="overflow-hidden rounded-2xl bg-white ring-1 ring-ink/8">
@@ -1223,7 +1239,7 @@ export default function AdminInquiriesPage() {
 
                 <dl className="mt-3 grid gap-3 text-[13px] sm:grid-cols-3">
                   <div>
-                    <dt className="text-sand-600">Total tariff</dt>
+                    <dt className="text-sand-600">Total payable</dt>
                     <dd className="font-mono font-medium text-ink">
                       {peso.format(inspected.totalAmount ?? 0)}
                     </dd>
@@ -1241,6 +1257,32 @@ export default function AdminInquiriesPage() {
                     </dd>
                   </div>
                 </dl>
+
+                {(() => {
+                  const econ = getBookingEconomics(inspected);
+                  return (
+                    <dl className="mt-3 grid gap-3 border-t border-ink/8 pt-3 text-[12px] sm:grid-cols-3">
+                      <div>
+                        <dt className="text-sand-600">Facilitation fee</dt>
+                        <dd className="font-mono text-lake-800">
+                          {formatPhpAmount(econ.facilitationFee)}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt className="text-sand-600">Operator comm. (8%)</dt>
+                        <dd className="font-mono text-ink">
+                          {formatPhpAmount(econ.operatorCommission)}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt className="text-sand-600">Platform revenue</dt>
+                        <dd className="font-mono font-semibold text-moss-700">
+                          {formatPhpAmount(econ.platformRevenue)}
+                        </dd>
+                      </div>
+                    </dl>
+                  );
+                })()}
 
                 {inspected.paymentReference && (
                   <div className="mt-3 rounded-xl bg-sand-50 p-3 text-[12.5px]">

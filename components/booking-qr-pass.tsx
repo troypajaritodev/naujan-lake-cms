@@ -1,18 +1,14 @@
 "use client";
 
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Download, QrCode } from "lucide-react";
 import QRCode from "qrcode";
 import type { Inquiry } from "@/lib/inquiries";
+import { isBoardableStatus } from "@/lib/inquiries-shared";
 
 export function buildVerifyPath(inquiry: Inquiry): string {
   const params = new URLSearchParams({
     ref: inquiry.reference,
-    guest: inquiry.fullName,
-    tour: inquiry.tourTitle,
-    date: inquiry.preferredDate,
-    guests: String(inquiry.partySize),
-    pay: inquiry.paymentStatus ?? "UNPAID",
   });
   return `/verify?${params.toString()}`;
 }
@@ -27,7 +23,42 @@ export default function BookingQrPass({
   showDownload?: boolean;
 }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const verifyPath = useMemo(() => buildVerifyPath(inquiry), [inquiry]);
+  const fallbackPath = useMemo(() => buildVerifyPath(inquiry), [inquiry]);
+  const [signedState, setSignedState] = useState<{
+    key: string;
+    path: string;
+  } | null>(null);
+  const isBoardable = isBoardableStatus(inquiry.status);
+  const signKey = `${inquiry.id}:${inquiry.reference}:${inquiry.status}:${inquiry.paymentStatus ?? ""}`;
+
+  useEffect(() => {
+    if (!isBoardable) return;
+
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch("/api/passes/sign", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: inquiry.id, reference: inquiry.reference }),
+        });
+        if (!res.ok) return;
+        const data = (await res.json()) as { verifyPath?: string };
+        if (!cancelled && data.verifyPath) {
+          setSignedState({ key: signKey, path: data.verifyPath });
+        }
+      } catch {
+        // Keep safe reference path fallback when offline.
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [inquiry.id, inquiry.reference, isBoardable, signKey]);
+
+  const verifyPath =
+    isBoardable && signedState?.key === signKey ? signedState.path : fallbackPath;
 
   useEffect(() => {
     const canvas = canvasRef.current;

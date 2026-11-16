@@ -4,23 +4,19 @@ import {
   inquiryConfirmationEmail,
   inquiryNotificationEmail,
 } from "@/lib/email-templates";
-import { parseInquiryPayload } from "@/lib/inquiry-payload";
+import { requireSession } from "@/lib/server-auth";
+import {
+  getServerInquiryById,
+  getServerInquiryByRef,
+} from "@/lib/server-inquiries";
 
 /**
- * Sends the two inquiry emails (FR-2.3). The inquiry itself is stored by the
- * demo store in the browser until the Supabase swap in Milestone 2, so this
- * route is the only server-side half of the flow.
- *
- * Abuse guard: the endpoint is unauthenticated by design (visitors are not
- * signed in when they book), so each client address is capped per window. The
- * map lives per server instance — it blunts accidental loops, not a botnet.
+ * Re-dispatches confirmation & park office alert emails for a persisted booking.
+ * Gated by an authenticated session + record ownership so it cannot act as an
+ * open email relay.
  */
 
 const WINDOW_MS = 10 * 60 * 1000;
-/**
- * A park kiosk can share one address with the whole queue, so this is a loose
- * cap: it stops a runaway loop without locking out a busy landing.
- */
 const MAX_PER_WINDOW = 20;
 
 const recentRequests = new Map<string, number[]>();
@@ -37,8 +33,17 @@ function isRateLimited(key: string): boolean {
 }
 
 export async function POST(request: Request) {
-  const clientKey =
-    request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "local";
+  const session = await requireSession();
+  if (!session) {
+    return NextResponse.json(
+      { error: "Sign in to send booking notifications." },
+      { status: 401 },
+    );
+  }
+
+  const clientKey = `${session.id}:${
+    request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "local"
+  }`;
 
   if (isRateLimited(clientKey)) {
     return NextResponse.json({ error: "Too many requests." }, { status: 429 });
@@ -51,11 +56,28 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Expected JSON." }, { status: 400 });
   }
 
-  const inquiry = parseInquiryPayload(payload);
+  const id = typeof payload.id === "string" ? payload.id.trim() : "";
+  const reference =
+    typeof payload.reference === "string" ? payload.reference.trim() : "";
+
+  const inquiry =
+    (id ? await getServerInquiryById(id) : null) ??
+    (reference ? await getServerInquiryByRef(reference) : null);
+
   if (!inquiry) {
     return NextResponse.json(
-      { error: "Incomplete inquiry." },
-      { status: 400 },
+      { error: "Booking record was not found." },
+      { status: 404 },
+    );
+  }
+
+  if (
+    session.role !== "admin" &&
+    inquiry.userEmail !== session.email.toLowerCase()
+  ) {
+    return NextResponse.json(
+      { error: "You can only trigger notifications for your own booking." },
+      { status: 403 },
     );
   }
 

@@ -12,6 +12,14 @@ import {
 } from "react";
 import { useRouter } from "next/navigation";
 import {
+  clearClientInquiries,
+  refreshInquiriesFromServer,
+} from "@/lib/inquiries";
+import {
+  clearClientSubscribers,
+  refreshSubscribersFromServer,
+} from "@/lib/subscribers";
+import {
   changePassword as changePasswordRecord,
   getServerSessionSnapshot,
   getSessionSnapshot,
@@ -61,17 +69,38 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
+  useEffect(() => {
+    if (!ready) return;
+    void refreshInquiriesFromServer();
+    if (user?.role === "admin") {
+      void refreshSubscribersFromServer();
+    } else {
+      clearClientSubscribers();
+    }
+  }, [ready, user?.id, user?.role]);
+
   const register = useCallback(async (input: RegisterInput) => {
-    return registerRecord(input);
+    const created = await registerRecord(input);
+    await refreshInquiriesFromServer();
+    return created;
   }, []);
 
   const signIn = useCallback(async (email: string, password: string) => {
-    return signInRecord(email, password);
+    const loggedIn = await signInRecord(email, password);
+    await refreshInquiriesFromServer();
+    if (loggedIn.role === "admin") {
+      await refreshSubscribersFromServer();
+    } else {
+      clearClientSubscribers();
+    }
+    return loggedIn;
   }, []);
 
   const signOut = useCallback(
     async (redirectTo = "/login?signedOut=1") => {
       await signOutRecord();
+      clearClientInquiries();
+      clearClientSubscribers();
 
       if (typeof window !== "undefined") {
         window.location.replace(redirectTo);
