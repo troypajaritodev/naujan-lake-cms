@@ -8,7 +8,7 @@
  * `localStorage` and are read through the same store the other screens use.
  */
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import {
   ArrowRight,
@@ -31,7 +31,7 @@ import {
 } from "@/app/admin/ghost/actions";
 import RevenueBreakdownCard from "@/components/admin/revenue-breakdown-card";
 import StatCard from "@/components/admin/stat-card";
-import { summariseUsers, useUsers } from "@/lib/auth";
+import { refreshUsersFromServer, summariseUsers, useUsers } from "@/lib/auth";
 import type { GhostStatus } from "@/lib/ghost";
 import { acceptInquiry, useInquiries, type Inquiry } from "@/lib/inquiries";
 import { useMinuteNow } from "@/lib/now";
@@ -110,6 +110,10 @@ export default function AdminOverview({
 }: OverviewProps) {
   const inquiries = useInquiries();
   const accounts = summariseUsers(useUsers());
+
+  useEffect(() => {
+    void refreshUsersFromServer().catch(() => {});
+  }, []);
   const subscribers = useSubscribers();
   const activeSubscribers = subscribers.filter(
     (entry) => entry.status === "ACTIVE",

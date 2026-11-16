@@ -333,6 +333,16 @@ function applyAcceptTransform(
 ): Inquiry {
   const at = new Date().toISOString();
   const hydrated = hydrateInquiry(existing);
+  if (
+    hydrated.status === "CANCELLED" ||
+    hydrated.status === "DECLINED" ||
+    hydrated.status === "COMPLETED"
+  ) {
+    throw new ServerInquiryError(
+      "Closed, declined, or cancelled bookings cannot be moved back to On Process.",
+      400,
+    );
+  }
   const shouldVerify =
     options?.verifyPayment !== false &&
     (hydrated.firstPaymentAmount ?? 0) > 0 &&
@@ -480,6 +490,22 @@ function applyFirstPaymentTransform(
     throw new ServerInquiryError(
       "You can only submit payment for your own booking.",
       403,
+    );
+  }
+  if (
+    hydrated.status === "CANCELLED" ||
+    hydrated.status === "DECLINED" ||
+    hydrated.status === "COMPLETED"
+  ) {
+    throw new ServerInquiryError(
+      "Payments cannot be submitted for closed, declined, or cancelled bookings.",
+      400,
+    );
+  }
+  if (hydrated.paymentStatus === "VERIFIED") {
+    throw new ServerInquiryError(
+      "This booking's first payment has already been verified.",
+      400,
     );
   }
 

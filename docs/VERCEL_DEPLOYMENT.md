@@ -77,14 +77,15 @@ In **Vercel → Project Settings → Environment Variables** (Production & Previ
 
 After deploying to Vercel:
 
-1. **Verify `/api/health`**:
+1. **Run preflight check:** Run `npm run go-live:check` in your environment with production variables configured to verify `portal_kv`, migrated columns, Ghost connectivity (including test-post cleanup), and Resend readiness.
+2. **Verify `/api/health`, `/robots.txt`, and `/sitemap.xml`**:
    Open `https://<your-vercel-domain>/api/health` and confirm HTTP `200` with:
    - `"storage": "supabase-postgres"`
    - `"supabasePublic": true`, `"supabaseAdmin": true`, `"sessionSecret": true`, `"ghostConfigured": true`, `"emailConfigured": true`
-2. **Rotate Seed Credentials Immediately**:
-   Sign in to `/auth/login` with the seeded staff account (`admin@naujanlake.ph`) and change its password in `/account` immediately, or promote a real staff account in `/admin` and suspend the demo accounts (`admin@naujanlake.ph`, `visitor@example.com`, `ana.reyes@example.com`).
-3. **Sync & Test Ghost Webhook**:
+3. **Rotate Seed Credentials Immediately**:
+   Sign in to `/login` with the seeded staff account (`admin@naujanlake.ph`) and change its password in `/account` immediately, or promote a real staff account in `/admin` and suspend the demo accounts (`admin@naujanlake.ph`, `visitor@example.com`, `ana.reyes@example.com`).
+4. **Sync & Test Ghost Webhook**:
    - In `/admin`, verify both badges show **Two-way sync active** and **Storage: Supabase Postgres**.
    - Publish or edit a post in Ghost Studio and confirm `/advisories` updates cleanly.
-4. **Keep Local Dev Unchanged**:
+5. **Keep Local Dev Unchanged**:
    Your local `.env.local`, Docker `ghost` + `mailpit`, and `.data/*.json` fallback continue working locally whenever `SUPABASE_SERVICE_ROLE_KEY` is omitted.

@@ -225,14 +225,26 @@ export async function refreshSessionFromServer(): Promise<SessionUser | null> {
   return inFlightSessionRefresh;
 }
 
+let inFlightUsersRefresh: Promise<SessionUser[]> | null = null;
+
 export async function refreshUsersFromServer(): Promise<SessionUser[]> {
   if (!canUseStorage()) return [];
-  const payload = await apiJson<{ users: SessionUser[] }>(
-    "/api/admin/users",
-    "GET",
-  );
-  writeCachedUsers(payload.users);
-  return payload.users;
+  if (inFlightUsersRefresh) return inFlightUsersRefresh;
+
+  inFlightUsersRefresh = (async () => {
+    try {
+      const payload = await apiJson<{ users: SessionUser[] }>(
+        "/api/admin/users",
+        "GET",
+      );
+      writeCachedUsers(payload.users);
+      return payload.users;
+    } finally {
+      inFlightUsersRefresh = null;
+    }
+  })();
+
+  return inFlightUsersRefresh;
 }
 
 export type RegisterInput = {

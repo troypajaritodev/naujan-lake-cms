@@ -260,12 +260,23 @@ function InquiryFields({
           const verifyData = (await verifyRes.json().catch(() => ({}))) as {
             paid?: boolean;
             paymentReference?: string;
+            paidAmountPhp?: number;
             error?: string;
           };
           if (!verifyRes.ok || !verifyData.paid) {
             reportError(
               verifyData.error ??
                 "Payment verification is still pending. Enter your reference manually or try again.",
+            );
+            return;
+          }
+          if (
+            typeof verifyData.paidAmountPhp === "number" &&
+            typeof draft.firstPaymentAmount === "number" &&
+            verifyData.paidAmountPhp < draft.firstPaymentAmount
+          ) {
+            reportError(
+              "Verified checkout amount was lower than the required first payment. Contact the park office for assistance.",
             );
             return;
           }
@@ -480,7 +491,10 @@ function InquiryFields({
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             amount: pricing.firstPayment,
+            tourSlug: selected.slug,
             tourTitle: selected.title,
+            partySize: party,
+            firstPaymentRate: values.firstPaymentRate,
             paymentMethod: values.paymentMethod,
             customerEmail: values.email.trim(),
             customerName: values.fullName.trim(),
@@ -500,6 +514,11 @@ function InquiryFields({
         }
 
         if (data.mode === "paymongo" && data.checkoutUrl) {
+          const breakdown = computeBookingPricing(
+            selected.ratePerPerson,
+            party,
+            FACILITATION_FEE_PHP,
+          );
           window.sessionStorage.setItem(
             PENDING_CHECKOUT_KEY,
             JSON.stringify({
@@ -513,7 +532,11 @@ function InquiryFields({
               partySize: party,
               message: values.message.trim(),
               ratePerPerson: selected.ratePerPerson,
-              totalAmount: selected.ratePerPerson * party,
+              packageSubtotal: breakdown.packageSubtotal,
+              facilitationFee: breakdown.facilitationFee,
+              operatorCommission: breakdown.operatorCommission,
+              platformRevenue: breakdown.platformRevenue,
+              totalAmount: breakdown.totalAmount,
               firstPaymentRate: values.firstPaymentRate,
               firstPaymentAmount: pricing.firstPayment,
               balanceAmount: pricing.balance,

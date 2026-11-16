@@ -1,12 +1,17 @@
 import { NextResponse } from "next/server";
 import type { PaymentMethod } from "@/lib/inquiries";
+import { computeBookingPricing, MAX_PARTY_SIZE } from "@/lib/inquiries-shared";
 import { cleanEmail, cleanText } from "@/lib/sanitize";
 import { requireSession } from "@/lib/server-auth";
 import { siteUrl } from "@/lib/site-url";
+import { getTours } from "@/lib/tours";
 
 type CheckoutRequest = {
   amount?: unknown;
+  tourSlug?: unknown;
   tourTitle?: unknown;
+  partySize?: unknown;
+  firstPaymentRate?: unknown;
   paymentMethod?: unknown;
   customerEmail?: unknown;
   customerName?: unknown;
@@ -97,7 +102,39 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Expected JSON payload." }, { status: 400 });
   }
 
-  const amountPhp = Math.round(Number(body.amount));
+  let tourTitle = cleanText(String(body.tourTitle ?? "Naujan Lake Tour"), 140);
+  let amountPhp = Math.round(Number(body.amount));
+
+  const tourSlug =
+    typeof body.tourSlug === "string" ? cleanText(body.tourSlug, 120) : "";
+  if (tourSlug) {
+    const partySize = Number(body.partySize);
+    if (
+      !Number.isInteger(partySize) ||
+      partySize < 1 ||
+      partySize > MAX_PARTY_SIZE
+    ) {
+      return NextResponse.json(
+        { error: `Party size must be between 1 and ${MAX_PARTY_SIZE} guests.` },
+        { status: 400 },
+      );
+    }
+
+    const tours = await getTours();
+    const matchedTour = tours.find((entry) => entry.slug === tourSlug);
+    if (!matchedTour) {
+      return NextResponse.json(
+        { error: "Select an active tour package before checkout." },
+        { status: 400 },
+      );
+    }
+
+    const depositRate = Number(body.firstPaymentRate) === 1 ? 1 : 0.5;
+    const pricing = computeBookingPricing(matchedTour.ratePerPerson, partySize);
+    amountPhp = Math.round(pricing.totalAmount * depositRate);
+    tourTitle = matchedTour.title;
+  }
+
   if (!Number.isFinite(amountPhp) || amountPhp < 20) {
     return NextResponse.json(
       { error: "Minimum deposit amount is ₱20." },
@@ -110,7 +147,6 @@ export async function POST(request: Request) {
     rawMethod === "GCASH" || rawMethod === "MAYA" || rawMethod === "BANK_TRANSFER"
       ? rawMethod
       : "GCASH";
-  const tourTitle = cleanText(String(body.tourTitle ?? "Naujan Lake Tour"), 140);
   const customerName = cleanText(String(body.customerName ?? "Visitor"), 120);
   const customerEmail = cleanEmail(String(body.customerEmail ?? ""));
   const siteOrigin = resolveCheckoutOrigin(body.origin);

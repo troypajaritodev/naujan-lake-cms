@@ -415,10 +415,10 @@ drop policy if exists advisories_admin_write on public.advisories;
 create policy advisories_admin_write on public.advisories
   for all using (public.is_admin()) with check (public.is_admin());
 
--- inquiries: visitors file their own, staff triage everything
+-- inquiries: only authenticated users (for themselves) or admins write via RLS; server writes use service_role
 drop policy if exists inquiries_insert on public.tour_inquiries;
 create policy inquiries_insert on public.tour_inquiries
-  for insert with check (true);
+  for insert with check (public.is_admin() or user_id = auth.uid());
 
 drop policy if exists inquiries_select_own on public.tour_inquiries;
 create policy inquiries_select_own on public.tour_inquiries
@@ -678,7 +678,7 @@ where user_email is null;
 
 insert into public.subscribers (email, topics)
 values
-  ('visitor@example.com', '{advisories,migration}'),
-  ('ana.reyes@example.com', '{advisories}'),
-  ('research@mindoro-state.edu.ph', '{migration,research}')
+  ('visitor@example.com', '{advisories,tours,events}'),
+  ('ana.reyes@example.com', '{advisories,tours}'),
+  ('research@mindoro-state.edu.ph', '{advisories,events}')
 on conflict (email) do nothing;
