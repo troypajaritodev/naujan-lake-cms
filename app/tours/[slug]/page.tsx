@@ -78,9 +78,10 @@ export default async function TourDetailPage({ params }: TourPageProps) {
   if (!tour) notFound();
 
   const total = tariffTotal(tour);
-  const others = await getRelatedTours(tour.slug, 3);
-
-  const allSpecies = tour.speciesSlugs.length > 0 ? await getSpecies() : [];
+  const [others, allSpecies] = await Promise.all([
+    getRelatedTours(tour.slug, 3),
+    tour.speciesSlugs.length > 0 ? getSpecies() : Promise.resolve([]),
+  ]);
   const tourSpecies = allSpecies.filter((species) =>
     tour.speciesSlugs.includes(species.slug),
   );

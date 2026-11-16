@@ -254,6 +254,7 @@ create index if not exists inquiries_user_email_idx    on public.tour_inquiries 
 create index if not exists inquiries_status_idx        on public.tour_inquiries (status);
 create index if not exists inquiries_created_idx       on public.tour_inquiries (created_at desc);
 create index if not exists inquiries_target_date_idx   on public.tour_inquiries (target_date);
+create index if not exists inquiries_status_date_idx   on public.tour_inquiries (target_date, status);
 create index if not exists advisories_published_idx    on public.advisories (published_at desc);
 create index if not exists advisories_severity_idx     on public.advisories (severity);
 create index if not exists advisories_category_idx     on public.advisories (category);

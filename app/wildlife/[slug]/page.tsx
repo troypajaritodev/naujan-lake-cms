@@ -92,11 +92,11 @@ export default async function SpeciesPage({ params }: SpeciesPageProps) {
 
   if (!entry) notFound();
 
-  const [groups, related] = await Promise.all([
+  const [groups, related, tours] = await Promise.all([
     getWildlifeGroups(),
     getRelatedSpecies(entry.slug, 4),
+    getToursForSpecies(entry.slug, 3),
   ]);
-  const tours = await getToursForSpecies(entry.slug, 3);
   const group = groups.find((candidate) => candidate.slug === entry.group);
 
   const facts = [

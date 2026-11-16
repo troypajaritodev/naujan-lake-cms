@@ -15,6 +15,13 @@ const recentRequests = new Map<string, number[]>();
 
 function isRateLimited(key: string): boolean {
   const now = Date.now();
+  if (recentRequests.size > 500) {
+    for (const [entryKey, timestamps] of recentRequests) {
+      if (timestamps.every((at) => now - at >= WINDOW_MS)) {
+        recentRequests.delete(entryKey);
+      }
+    }
+  }
   const hits = (recentRequests.get(key) ?? []).filter(
     (at) => now - at < WINDOW_MS,
   );

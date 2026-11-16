@@ -122,7 +122,7 @@ function setCachedSession(user: SessionUser | null) {
     const clean = stripPasswordHash(user);
     window.localStorage.setItem(SESSION_KEY, JSON.stringify(clean));
     upsertCachedUser(clean);
-  } else {
+  } else if (window.localStorage.getItem(SESSION_KEY) !== null) {
     window.localStorage.removeItem(SESSION_KEY);
     emit();
   }
@@ -201,18 +201,28 @@ async function apiJson<T>(
   return payload;
 }
 
+let inFlightSessionRefresh: Promise<SessionUser | null> | null = null;
+
 export async function refreshSessionFromServer(): Promise<SessionUser | null> {
   if (!canUseStorage()) return null;
-  try {
-    const payload = await apiJson<{ user: SessionUser | null }>(
-      "/api/auth/session",
-      "GET",
-    );
-    setCachedSession(payload.user ?? null);
-    return payload.user ?? null;
-  } catch {
-    return getSession();
-  }
+  if (inFlightSessionRefresh) return inFlightSessionRefresh;
+
+  inFlightSessionRefresh = (async () => {
+    try {
+      const payload = await apiJson<{ user: SessionUser | null }>(
+        "/api/auth/session",
+        "GET",
+      );
+      setCachedSession(payload.user ?? null);
+      return payload.user ?? null;
+    } catch {
+      return getSession();
+    } finally {
+      inFlightSessionRefresh = null;
+    }
+  })();
+
+  return inFlightSessionRefresh;
 }
 
 export async function refreshUsersFromServer(): Promise<SessionUser[]> {

@@ -71,9 +71,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!ready) return;
-    void refreshInquiriesFromServer();
-    if (user?.role === "admin") {
-      void refreshSubscribersFromServer();
+    if (user?.id) {
+      void refreshInquiriesFromServer();
+      if (user.role === "admin") {
+        void refreshSubscribersFromServer();
+      } else {
+        clearClientSubscribers();
+      }
     } else {
       clearClientSubscribers();
     }

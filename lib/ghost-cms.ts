@@ -126,36 +126,37 @@ async function fetchGhostPostsFor(kind: GhostCollectionKind): Promise<{
   if (!status.contentApiReady) return null;
 
   const isDefaultAdvisoryFeed = kind === "advisories";
-  const contentRes = await ghostContentFetch<{ posts?: GhostPost[] }>("posts/", {
-    include: "tags",
-    formats: "html",
-    limit: "all",
-    ...(isDefaultAdvisoryFeed ? {} : { filter: tagFilter(kind) }),
-  });
+  const draftFilter = isDefaultAdvisoryFeed
+    ? "status:draft"
+    : `status:draft+${tagFilter(kind)}`;
+
+  const [contentRes, adminRes] = await Promise.all([
+    ghostContentFetch<{ posts?: GhostPost[] }>("posts/", {
+      include: "tags",
+      formats: "html",
+      limit: "all",
+      ...(isDefaultAdvisoryFeed ? {} : { filter: tagFilter(kind) }),
+    }),
+    status.adminApiReady
+      ? ghostAdminFetch<{ posts?: GhostPost[] }>(
+          `posts/?${new URLSearchParams({
+            filter: draftFilter,
+            include: "tags",
+            formats: "html",
+            limit: "all",
+          }).toString()}`,
+        )
+      : Promise.resolve(null),
+  ]);
 
   if (!contentRes || !Array.isArray(contentRes.posts)) {
     return null;
   }
 
-  let drafted: GhostPost[] = [];
-  if (status.adminApiReady) {
-    const draftFilter = isDefaultAdvisoryFeed
-      ? "status:draft"
-      : `status:draft+${tagFilter(kind)}`;
-    const adminRes = await ghostAdminFetch<{ posts?: GhostPost[] }>(
-      `posts/?${new URLSearchParams({
-        filter: draftFilter,
-        include: "tags",
-        formats: "html",
-        limit: "all",
-      }).toString()}`,
-    );
-    if (adminRes.ok && Array.isArray(adminRes.data.posts)) {
-      drafted = adminRes.data.posts.filter((post) =>
-        matchesCollection(post, kind),
-      );
-    }
-  }
+  const drafted =
+    adminRes && adminRes.ok && Array.isArray(adminRes.data.posts)
+      ? adminRes.data.posts.filter((post) => matchesCollection(post, kind))
+      : [];
 
   return {
     published: contentRes.posts.filter((post) =>

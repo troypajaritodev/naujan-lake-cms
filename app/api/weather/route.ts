@@ -80,7 +80,12 @@ export async function GET() {
     });
 
     if (!response.ok) {
-      return NextResponse.json(fallbackWeather(), { status: 200 });
+      return NextResponse.json(fallbackWeather(), {
+        status: 200,
+        headers: {
+          "Cache-Control": "public, s-maxage=60, stale-while-revalidate=120",
+        },
+      });
     }
 
     const data = (await response.json()) as {
@@ -95,7 +100,12 @@ export async function GET() {
 
     const current = data.current;
     if (!current || typeof current.temperature_2m !== "number") {
-      return NextResponse.json(fallbackWeather(), { status: 200 });
+      return NextResponse.json(fallbackWeather(), {
+        status: 200,
+        headers: {
+          "Cache-Control": "public, s-maxage=60, stale-while-revalidate=120",
+        },
+      });
     }
 
     const code = Number(current.weather_code ?? 1);
@@ -115,8 +125,18 @@ export async function GET() {
       source: "open-meteo",
     };
 
-    return NextResponse.json(payload, { status: 200 });
+    return NextResponse.json(payload, {
+      status: 200,
+      headers: {
+        "Cache-Control": "public, s-maxage=900, stale-while-revalidate=1800",
+      },
+    });
   } catch {
-    return NextResponse.json(fallbackWeather(), { status: 200 });
+    return NextResponse.json(fallbackWeather(), {
+      status: 200,
+      headers: {
+        "Cache-Control": "public, s-maxage=60, stale-while-revalidate=120",
+      },
+    });
   }
 }

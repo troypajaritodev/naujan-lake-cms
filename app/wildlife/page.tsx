@@ -90,8 +90,8 @@ function readFilter(
  * lives behind a Suspense boundary while the hero and counts stay static.
  */
 async function CataloguePanel({ searchParams }: WildlifePageProps) {
-  const params = await searchParams;
-  const [groups, entries] = await Promise.all([
+  const [params, groups, entries] = await Promise.all([
+    searchParams,
     getWildlifeGroups(),
     getSpecies(),
   ]);

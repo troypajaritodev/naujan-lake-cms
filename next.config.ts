@@ -21,12 +21,15 @@ function ghostImagePatterns(): NonNullable<NextConfig["images"]>["remotePatterns
 
 const nextConfig: NextConfig = {
   /* config options here */
+  poweredByHeader: false,
   experimental: {
     agentFeedback: true,
   },
   cacheComponents: true,
   partialPrefetching: true,
   images: {
+    formats: ["image/avif", "image/webp"],
+    minimumCacheTTL: 60 * 60 * 24,
     remotePatterns: ghostImagePatterns(),
   },
   /**

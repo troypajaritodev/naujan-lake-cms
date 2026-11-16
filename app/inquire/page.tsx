@@ -38,8 +38,10 @@ type InquirePageProps = {
 
 /** Awaiting `searchParams` suspends, so it is isolated behind a Suspense boundary. */
 async function InquiryPanel({ searchParams }: InquirePageProps) {
-  const { tour, checkout } = await searchParams;
-  const tours = await getTours();
+  const [{ tour, checkout }, tours] = await Promise.all([
+    searchParams,
+    getTours(),
+  ]);
 
   return (
     <InquiryForm

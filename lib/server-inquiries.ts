@@ -4,6 +4,7 @@ import crypto from "node:crypto";
 import type { SessionUser } from "@/lib/auth-seeds";
 import {
   canCancelInquiry,
+  CANCELLABLE_STATUSES,
   computeBookingPricing,
   computeReservedBySlot,
   FACILITATION_FEE_PHP,
@@ -11,6 +12,7 @@ import {
   hydrateInquiry,
   MAX_PARTY_SIZE,
   SEED_INQUIRIES,
+  slotKey,
   stampInquiryStatus,
   type FirstPaymentSubmission,
   type Inquiry,
@@ -118,8 +120,29 @@ function sanitizeProofUrl(raw: unknown): string | undefined {
   return undefined;
 }
 
-async function loadTourLookup(admin: AdminClient): Promise<TourLookup> {
-  const { data, error } = await admin.from("tours").select("id, slug, title");
+type TourLookupHintRow = {
+  tour_id: string;
+  tour_slug: string | null;
+  tour_title?: string | null;
+};
+
+async function resolveMissingTourLookup(
+  admin: AdminClient,
+  rows: readonly TourLookupHintRow[],
+  requireTitle = true,
+): Promise<TourLookup> {
+  const missingIds = new Set<string>();
+  for (const row of rows) {
+    if (!row.tour_slug || (requireTitle && !row.tour_title)) {
+      missingIds.add(row.tour_id);
+    }
+  }
+  if (missingIds.size === 0) return new Map();
+
+  const { data, error } = await admin
+    .from("tours")
+    .select("id, slug, title")
+    .in("id", [...missingIds]);
   const lookup: TourLookup = new Map();
   if (error || !data) return lookup;
   for (const row of data) {
@@ -265,10 +288,11 @@ async function fetchSupabaseInquiryById(
     throw new ServerInquiryError("We could not find that booking.", 404);
   }
 
-  const [{ data, error }, tourMap] = await Promise.all([
-    admin.from("tour_inquiries").select("*").eq("id", id).maybeSingle(),
-    loadTourLookup(admin),
-  ]);
+  const { data, error } = await admin
+    .from("tour_inquiries")
+    .select("*")
+    .eq("id", id)
+    .maybeSingle();
 
   if (error) {
     throw new ServerInquiryError("Booking storage is temporarily unavailable.", 502);
@@ -277,6 +301,7 @@ async function fetchSupabaseInquiryById(
     throw new ServerInquiryError("We could not find that booking.", 404);
   }
 
+  const tourMap = await resolveMissingTourLookup(admin, [data]);
   return { inquiry: rowToInquiry(data, tourMap), tourMap };
 }
 
@@ -546,15 +571,13 @@ export async function listServerInquiriesForSession(
             `user_email.eq.${escapedEmail},and(user_email.is.null,email.eq.${escapedEmail})`,
           );
 
-    const [{ data, error }, tourMap] = await Promise.all([
-      query,
-      loadTourLookup(admin),
-    ]);
+    const { data, error } = await query;
 
     if (error || !data) {
       throw new ServerInquiryError("Could not load booking history.", 502);
     }
 
+    const tourMap = await resolveMissingTourLookup(admin, data);
     return data.map((row) => rowToInquiry(row, tourMap));
   }
 
@@ -573,11 +596,13 @@ export async function getServerInquiryById(id: string): Promise<Inquiry | null> 
   const admin = getSupabaseAdminClient();
   if (admin) {
     if (!UUID_PATTERN.test(cleanId)) return null;
-    const [{ data, error }, tourMap] = await Promise.all([
-      admin.from("tour_inquiries").select("*").eq("id", cleanId).maybeSingle(),
-      loadTourLookup(admin),
-    ]);
+    const { data, error } = await admin
+      .from("tour_inquiries")
+      .select("*")
+      .eq("id", cleanId)
+      .maybeSingle();
     if (error || !data) return null;
+    const tourMap = await resolveMissingTourLookup(admin, [data]);
     return rowToInquiry(data, tourMap);
   }
 
@@ -594,7 +619,6 @@ export async function getServerInquiryByRef(
 
   const admin = getSupabaseAdminClient();
   if (admin) {
-    const tourMap = await loadTourLookup(admin);
     const { data: byRef, error: refErr } = await admin
       .from("tour_inquiries")
       .select("*")
@@ -602,6 +626,7 @@ export async function getServerInquiryByRef(
       .maybeSingle();
 
     if (!refErr && byRef) {
+      const tourMap = await resolveMissingTourLookup(admin, [byRef]);
       return rowToInquiry(byRef, tourMap);
     }
 
@@ -612,6 +637,7 @@ export async function getServerInquiryByRef(
         .eq("id", trimmed)
         .maybeSingle();
       if (!idErr && byId) {
+        const tourMap = await resolveMissingTourLookup(admin, [byId]);
         return rowToInquiry(byId, tourMap);
       }
     }
@@ -631,12 +657,21 @@ export async function getServerInquiryByRef(
 export async function getServerReservedBySlot(): Promise<Record<string, number>> {
   const admin = getSupabaseAdminClient();
   if (admin) {
-    const [{ data, error }, tourMap] = await Promise.all([
-      admin.from("tour_inquiries").select("*"),
-      loadTourLookup(admin),
-    ]);
+    const { data, error } = await admin
+      .from("tour_inquiries")
+      .select("tour_id, tour_slug, target_date, party_size, status")
+      .in("status", [...CANCELLABLE_STATUSES]);
     if (error || !data) return {};
-    return computeReservedBySlot(data.map((row) => rowToInquiry(row, tourMap)));
+
+    const tourMap = await resolveMissingTourLookup(admin, data, false);
+    const counts: Record<string, number> = {};
+    for (const row of data) {
+      const slug = row.tour_slug ?? tourMap.get(row.tour_id)?.slug;
+      if (!slug || !row.target_date) continue;
+      const key = slotKey(slug, row.target_date);
+      counts[key] = (counts[key] ?? 0) + Math.max(0, row.party_size);
+    }
+    return counts;
   }
 
   const all = await inquiryStore.read();
@@ -790,24 +825,34 @@ export async function createServerInquiry(
   const admin = getSupabaseAdminClient();
   if (admin) {
     return withSupabaseBookingLock(async () => {
-      const [tourId, { data: sameDayRows, error: dayErr }, tourMap] =
-        await Promise.all([
-          resolveOrEnsureSupabaseTourId(admin, tour),
-          admin
-            .from("tour_inquiries")
-            .select("*")
-            .eq("target_date", preferredDate),
-          loadTourLookup(admin),
-        ]);
+      const [tourId, { data: sameDayRows, error: dayErr }] = await Promise.all([
+        resolveOrEnsureSupabaseTourId(admin, tour),
+        admin
+          .from("tour_inquiries")
+          .select("tour_id, tour_slug, party_size")
+          .eq("target_date", preferredDate)
+          .in("status", [...CANCELLABLE_STATUSES]),
+      ]);
 
       if (dayErr) {
         throw new ServerInquiryError("Could not verify tour capacity.", 502);
       }
 
-      const dayInquiries = (sameDayRows ?? []).map((row) =>
-        rowToInquiry(row, tourMap),
+      const fallbackMap = await resolveMissingTourLookup(
+        admin,
+        sameDayRows ?? [],
+        false,
       );
-      const reserved = getReservedSeatsForDate(dayInquiries, tour.slug, preferredDate);
+      let reserved = 0;
+      for (const row of sameDayRows ?? []) {
+        const slug =
+          row.tour_slug ??
+          (row.tour_id === tourId ? tour.slug : fallbackMap.get(row.tour_id)?.slug);
+        if (slug === tour.slug) {
+          reserved += Math.max(0, row.party_size);
+        }
+      }
+
       const remaining = Math.max(0, tour.maxCapacity - reserved);
       if (rawPartySize > remaining) {
         throw new ServerInquiryError(
@@ -817,6 +862,10 @@ export async function createServerInquiry(
           409,
         );
       }
+
+      const tourMap: TourLookup = new Map([
+        [tourId, { slug: tour.slug, title: tour.title }],
+      ]);
 
       const userId = UUID_PATTERN.test(session.id) ? session.id : null;
       for (let attempt = 0; attempt < 3; attempt++) {
