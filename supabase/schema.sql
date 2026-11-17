@@ -255,6 +255,7 @@ create index if not exists inquiries_status_idx        on public.tour_inquiries 
 create index if not exists inquiries_created_idx       on public.tour_inquiries (created_at desc);
 create index if not exists inquiries_target_date_idx   on public.tour_inquiries (target_date);
 create index if not exists inquiries_status_date_idx   on public.tour_inquiries (target_date, status);
+create index if not exists advisories_author_idx       on public.advisories (author_id);
 create index if not exists advisories_published_idx    on public.advisories (published_at desc);
 create index if not exists advisories_severity_idx     on public.advisories (severity);
 create index if not exists advisories_category_idx     on public.advisories (category);
@@ -267,9 +268,10 @@ create index if not exists subscribers_status_idx      on public.subscribers (st
 create or replace function public.touch_updated_at()
 returns trigger
 language plpgsql
+set search_path = ''
 as $$
 begin
-  new.updated_at := now();
+  new.updated_at := pg_catalog.now();
   return new;
 end;
 $$;
@@ -304,7 +306,7 @@ create or replace function public.handle_new_user()
 returns trigger
 language plpgsql
 security definer
-set search_path = public
+set search_path = ''
 as $$
 declare
   resolved_name text;
@@ -339,6 +341,8 @@ begin
 end;
 $$;
 
+revoke execute on function public.handle_new_user() from public, anon, authenticated;
+
 drop trigger if exists on_auth_user_created on auth.users;
 create trigger on_auth_user_created
   after insert on auth.users
@@ -347,20 +351,27 @@ create trigger on_auth_user_created
 -- ---------------------------------------------------------------------------
 -- 5. Row-Level Security
 -- ---------------------------------------------------------------------------
-create or replace function public.is_admin()
+create schema if not exists private;
+revoke all on schema private from public;
+grant usage on schema private to authenticated, anon, service_role;
+
+create or replace function private.is_admin()
 returns boolean
 language sql
 stable
 security definer
-set search_path = public
+set search_path = ''
 as $$
   select exists (
     select 1 from public.users u
-    where u.id = auth.uid()
+    where u.id = (select auth.uid())
       and u.role = 'admin'
       and u.is_active
   );
 $$;
+
+revoke execute on function private.is_admin() from public;
+grant execute on function private.is_admin() to authenticated, anon, service_role;
 
 alter table public.users          enable row level security;
 alter table public.categories     enable row level security;
@@ -371,82 +382,120 @@ alter table public.advisories     enable row level security;
 alter table public.subscribers    enable row level security;
 alter table public.portal_kv      enable row level security;
 
--- users: read your own row, edit your own profile, staff see everyone
+-- users: read your own row, edit your own profile (role stays visitor), staff manage all
 drop policy if exists users_select_self on public.users;
 create policy users_select_self on public.users
-  for select using (id = auth.uid() or public.is_admin());
+  for select to authenticated
+  using (id = (select auth.uid()) or (select private.is_admin()));
 
 drop policy if exists users_update_self on public.users;
 create policy users_update_self on public.users
-  for update using (id = auth.uid() or public.is_admin())
-  with check (id = auth.uid() or public.is_admin());
+  for update to authenticated
+  using (id = (select auth.uid()) or (select private.is_admin()))
+  with check ((select private.is_admin()) or (id = (select auth.uid()) and role = 'visitor'));
 
 drop policy if exists users_admin_write on public.users;
-create policy users_admin_write on public.users
-  for all using (public.is_admin()) with check (public.is_admin());
+drop policy if exists users_admin_insert on public.users;
+create policy users_admin_insert on public.users
+  for insert to authenticated
+  with check ((select private.is_admin()));
 
--- published content is world-readable; only staff may change it
+drop policy if exists users_admin_delete on public.users;
+create policy users_admin_delete on public.users
+  for delete to authenticated
+  using ((select private.is_admin()));
+
+-- published content is world-readable; only staff may mutate it
 drop policy if exists categories_public_read on public.categories;
 create policy categories_public_read on public.categories for select using (true);
 
 drop policy if exists categories_admin_write on public.categories;
-create policy categories_admin_write on public.categories
-  for all using (public.is_admin()) with check (public.is_admin());
+drop policy if exists categories_admin_insert on public.categories;
+create policy categories_admin_insert on public.categories
+  for insert to authenticated with check ((select private.is_admin()));
+drop policy if exists categories_admin_update on public.categories;
+create policy categories_admin_update on public.categories
+  for update to authenticated using ((select private.is_admin())) with check ((select private.is_admin()));
+drop policy if exists categories_admin_delete on public.categories;
+create policy categories_admin_delete on public.categories
+  for delete to authenticated using ((select private.is_admin()));
 
 drop policy if exists species_public_read on public.species;
 create policy species_public_read on public.species for select using (true);
 
 drop policy if exists species_admin_write on public.species;
-create policy species_admin_write on public.species
-  for all using (public.is_admin()) with check (public.is_admin());
+drop policy if exists species_admin_insert on public.species;
+create policy species_admin_insert on public.species
+  for insert to authenticated with check ((select private.is_admin()));
+drop policy if exists species_admin_update on public.species;
+create policy species_admin_update on public.species
+  for update to authenticated using ((select private.is_admin())) with check ((select private.is_admin()));
+drop policy if exists species_admin_delete on public.species;
+create policy species_admin_delete on public.species
+  for delete to authenticated using ((select private.is_admin()));
 
 drop policy if exists tours_public_read on public.tours;
-create policy tours_public_read on public.tours for select using (is_active or public.is_admin());
+create policy tours_public_read on public.tours for select using (is_active or (select private.is_admin()));
 
 drop policy if exists tours_admin_write on public.tours;
-create policy tours_admin_write on public.tours
-  for all using (public.is_admin()) with check (public.is_admin());
+drop policy if exists tours_admin_insert on public.tours;
+create policy tours_admin_insert on public.tours
+  for insert to authenticated with check ((select private.is_admin()));
+drop policy if exists tours_admin_update on public.tours;
+create policy tours_admin_update on public.tours
+  for update to authenticated using ((select private.is_admin())) with check ((select private.is_admin()));
+drop policy if exists tours_admin_delete on public.tours;
+create policy tours_admin_delete on public.tours
+  for delete to authenticated using ((select private.is_admin()));
 
 drop policy if exists advisories_public_read on public.advisories;
 create policy advisories_public_read on public.advisories
-  for select using (published_at <= now() or public.is_admin());
+  for select using (published_at <= now() or (select private.is_admin()));
 
 drop policy if exists advisories_admin_write on public.advisories;
-create policy advisories_admin_write on public.advisories
-  for all using (public.is_admin()) with check (public.is_admin());
+drop policy if exists advisories_admin_insert on public.advisories;
+create policy advisories_admin_insert on public.advisories
+  for insert to authenticated with check ((select private.is_admin()));
+drop policy if exists advisories_admin_update on public.advisories;
+create policy advisories_admin_update on public.advisories
+  for update to authenticated using ((select private.is_admin())) with check ((select private.is_admin()));
+drop policy if exists advisories_admin_delete on public.advisories;
+create policy advisories_admin_delete on public.advisories
+  for delete to authenticated using ((select private.is_admin()));
 
 -- inquiries: only authenticated users (for themselves) or admins write via RLS; server writes use service_role
 drop policy if exists inquiries_insert on public.tour_inquiries;
 create policy inquiries_insert on public.tour_inquiries
-  for insert with check (public.is_admin() or user_id = auth.uid());
+  for insert to authenticated
+  with check ((select private.is_admin()) or user_id = (select auth.uid()));
 
 drop policy if exists inquiries_select_own on public.tour_inquiries;
 create policy inquiries_select_own on public.tour_inquiries
-  for select using (
-    public.is_admin()
-    or user_id = auth.uid()
-    or lower(email) = lower(coalesce(auth.jwt() ->> 'email', ''))
+  for select to authenticated using (
+    (select private.is_admin())
+    or user_id = (select auth.uid())
+    or lower(email) = lower(coalesce((select auth.jwt()) ->> 'email', ''))
   );
 
 drop policy if exists inquiries_admin_update on public.tour_inquiries;
 create policy inquiries_admin_update on public.tour_inquiries
-  for update using (
-    public.is_admin()
-    or user_id = auth.uid()
-    or lower(email) = lower(coalesce(auth.jwt() ->> 'email', ''))
+  for update to authenticated using (
+    (select private.is_admin())
+    or user_id = (select auth.uid())
+    or lower(email) = lower(coalesce((select auth.jwt()) ->> 'email', ''))
   )
   with check (
-    public.is_admin()
-    or user_id = auth.uid()
-    or lower(email) = lower(coalesce(auth.jwt() ->> 'email', ''))
+    (select private.is_admin())
+    or user_id = (select auth.uid())
+    or lower(email) = lower(coalesce((select auth.jwt()) ->> 'email', ''))
   );
 
 drop policy if exists inquiries_delete_own on public.tour_inquiries;
 create policy inquiries_delete_own on public.tour_inquiries
-  for delete using (
-    public.is_admin()
-    or user_id = auth.uid()
-    or lower(email) = lower(coalesce(auth.jwt() ->> 'email', ''))
+  for delete to authenticated using (
+    (select private.is_admin())
+    or user_id = (select auth.uid())
+    or lower(email) = lower(coalesce((select auth.jwt()) ->> 'email', ''))
   );
 
 -- newsletter: anyone may subscribe, only staff may read the audience
@@ -455,7 +504,9 @@ create policy subscribers_insert on public.subscribers for insert with check (tr
 
 drop policy if exists subscribers_admin_read on public.subscribers;
 create policy subscribers_admin_read on public.subscribers
-  for select using (public.is_admin());
+  for select to authenticated using ((select private.is_admin()));
+
+drop function if exists public.is_admin();
 
 -- ---------------------------------------------------------------------------
 -- 6. Seed data — mirrors the demo accounts and packages in the Next.js app

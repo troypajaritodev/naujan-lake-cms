@@ -6,8 +6,8 @@
  *
  *   npx supabase gen types typescript --project-id <id> > lib/supabase/types.ts
  *
- * Keep it in step with `supabase/schema.sql` — the seven tables, the seven
- * enums and the `is_admin()` helper are the whole surface the app touches.
+ * Keep it in step with `supabase/schema.sql` — the eight tables and nine
+ * enums are the whole surface the app touches.
  */
 
 export type Json =
@@ -271,12 +271,7 @@ export type Database = {
       >;
     };
     Views: { [_ in never]: never };
-    Functions: {
-      is_admin: {
-        Args: Record<string, never>;
-        Returns: boolean;
-      };
-    };
+    Functions: { [_ in never]: never };
     Enums: {
       user_role: UserRole;
       conservation_status: ConservationStatus;

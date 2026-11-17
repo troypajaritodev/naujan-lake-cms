@@ -7,6 +7,7 @@ import {
 } from "@/lib/advisories";
 import { getGhostStatus, wakeGhostAdmin } from "@/lib/ghost";
 import {
+  ensureGhostCollectionTags,
   pushAdvisoryToGhost,
   pushRulesToGhost,
   pushSpeciesToGhost,
@@ -82,6 +83,9 @@ export async function syncAllToGhostAction(): Promise<GhostBulkSyncResult> {
       message: `Ghost host did not respond in time: ${wake.error}`,
     };
   }
+
+  // Seed collection tags sequentially before concurrent post writes to prevent nested-relation races.
+  await ensureGhostCollectionTags();
 
   const [
     publishedAdvisories,

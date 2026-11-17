@@ -45,7 +45,9 @@ Because Render's **Free** Web Service tier has ephemeral disk storage (no Persis
 - **Cold-start note**: Render Free takes ~30–50s to wake from sleep; the Next.js Admin sync action calls `wakeGhostAdmin()` first and uses a 35s Admin API timeout (`GHOST_ADMIN_TIMEOUT_MS`). Optionally configure an external uptime ping (e.g. every 10–14 min) to keep Ghost warm during active hours.
 
 ### Ghost Production Security & Integration Setup
-- **Security**: Unlike local Docker development (`docker-compose.yml` sets `security__staffDeviceVerification: "false"`), keep staff device verification enabled (`true`) and configure real production SMTP credentials on Ghost (`mail__transport=SMTP`, e.g. Resend `smtp.resend.com` port `465`) so Ghost staff logins and password resets work properly.
+- **Security & SMTP**:
+  - On hosts that permit outbound SMTP (VPS, Railway, Render Paid Starter), keep staff device verification enabled (`true`) and configure production SMTP (`mail__transport=SMTP` with a verified sending domain) so Ghost staff logins and password resets work properly.
+  - On **Render Free Tier**, outbound TCP ports `25`, `465`, and `587` are blocked at the network level (`ETIMEDOUT` on staff login 2FA emails). Set `security__staffDeviceVerification=false` on Render Free Tier so staff can sign in cleanly, and rotate a strong Ghost owner password.
 - **Content Cleanup**: If you created local draft/test posts (such as test post `gyfyfyt`), delete or archive them in Ghost Studio before pushing or syncing production content.
 - **API Keys**: In Ghost Studio (**Settings → Integrations → Add custom integration**), create an integration for Next.js and copy:
   - Content API key → `GHOST_CONTENT_API_KEY`
@@ -100,7 +102,7 @@ After deploying to Vercel:
    - `"storage": "supabase-postgres"`
    - `"supabasePublic": true`, `"supabaseAdmin": true`, `"sessionSecret": true`, `"ghostConfigured": true`, `"emailConfigured": true`
 3. **Rotate Seed Credentials Immediately**:
-   Sign in to `/login` with the seeded staff account (`admin@naujanlake.ph`) and change its password in `/account` immediately, or promote a real staff account in `/admin` and suspend the demo accounts (`admin@naujanlake.ph`, `visitor@example.com`, `ana.reyes@example.com`).
+   Sign in to `/login` with the seeded staff account (`admin@naujanlake.gov.ph`) and change its password in `/account` immediately, or promote a real staff account in `/admin` and suspend the demo accounts (`admin@naujanlake.gov.ph`, `visitor@example.com`, `ana.reyes@example.com`).
 4. **Sync & Test Ghost Webhook**:
    - In `/admin`, verify both badges show **Two-way sync active** and **Storage: Supabase Postgres**.
    - Publish or edit a post in Ghost Studio and confirm `/advisories` updates cleanly.

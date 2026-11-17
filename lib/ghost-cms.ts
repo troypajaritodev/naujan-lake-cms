@@ -166,6 +166,28 @@ async function fetchGhostPostsFor(kind: GhostCollectionKind): Promise<{
   };
 }
 
+/**
+ * Ensures the internal `#nl-*` collection tags exist in Ghost before concurrent
+ * bulk writes begin, avoiding Ghost Bookshelf nested-relation races when
+ * parallel requests auto-create the same tag simultaneously.
+ */
+export async function ensureGhostCollectionTags(): Promise<void> {
+  if (!getGhostStatus().adminApiReady) return;
+
+  for (const name of Object.values(PRIMARY_TAG_NAME)) {
+    const slug = name.toLowerCase().replace(/^#/, "hash-");
+    const lookup = await ghostAdminFetch<{ tags?: GhostTag[] }>(
+      `tags/slug/${encodeURIComponent(slug)}/`,
+    );
+    if (!lookup.ok && lookup.status === 404) {
+      await ghostAdminFetch<{ tags?: GhostTag[] }>("tags/", {
+        method: "POST",
+        body: { tags: [{ name, slug }] },
+      });
+    }
+  }
+}
+
 function mergeTagsPreservingCustom(
   existing: readonly GhostTag[] | undefined,
   requiredTagName: string,
@@ -205,64 +227,73 @@ async function upsertGhostPost(input: {
     return { synced: false, skipped: true };
   }
 
-  const lookup = await ghostAdminFetch<{ posts?: GhostPost[] }>(
-    `posts/slug/${encodeURIComponent(input.slug)}/?include=tags&formats=html`,
-  );
+  const writeOnce = async (): Promise<GhostSyncResult> => {
+    const lookup = await ghostAdminFetch<{ posts?: GhostPost[] }>(
+      `posts/slug/${encodeURIComponent(input.slug)}/?include=tags&formats=html`,
+    );
 
-  const existing =
-    lookup.ok && Array.isArray(lookup.data.posts) ? lookup.data.posts[0] : undefined;
+    const existing =
+      lookup.ok && Array.isArray(lookup.data.posts) ? lookup.data.posts[0] : undefined;
 
-  if (!lookup.ok && lookup.status !== 404) {
-    return { synced: false, error: lookup.error };
-  }
-
-  const postBody: Record<string, unknown> = {
-    title: input.title,
-    slug: input.slug,
-    html: input.html,
-    custom_excerpt: input.customExcerpt ?? null,
-    status: input.status,
-    tags: mergeTagsPreservingCustom(existing?.tags, input.requiredTag),
-    codeinjection_foot: encodeGhostMeta(input.meta),
-  };
-
-  if (input.featureImage && /^https?:\/\//i.test(input.featureImage)) {
-    postBody.feature_image = input.featureImage;
-    if (input.featureImageAlt) {
-      postBody.feature_image_alt = input.featureImageAlt;
+    if (!lookup.ok && lookup.status !== 404) {
+      return { synced: false, error: lookup.error };
     }
-  }
 
-  if (input.publishedAt && /^\d{4}-\d{2}-\d{2}/.test(input.publishedAt)) {
-    postBody.published_at = input.publishedAt.includes("T")
-      ? input.publishedAt
-      : `${input.publishedAt}T08:00:00.000Z`;
-  }
+    const postBody: Record<string, unknown> = {
+      title: input.title,
+      slug: input.slug,
+      html: input.html,
+      custom_excerpt: input.customExcerpt ?? null,
+      status: input.status,
+      tags: mergeTagsPreservingCustom(existing?.tags, input.requiredTag),
+      codeinjection_foot: encodeGhostMeta(input.meta),
+    };
 
-  if (existing) {
-    postBody.updated_at = existing.updated_at;
-    const updated = await ghostAdminFetch<{ posts?: GhostPost[] }>(
-      `posts/${encodeURIComponent(existing.id)}/?source=html`,
+    if (input.featureImage && /^https?:\/\//i.test(input.featureImage)) {
+      postBody.feature_image = input.featureImage;
+      if (input.featureImageAlt) {
+        postBody.feature_image_alt = input.featureImageAlt;
+      }
+    }
+
+    if (input.publishedAt && /^\d{4}-\d{2}-\d{2}/.test(input.publishedAt)) {
+      postBody.published_at = input.publishedAt.includes("T")
+        ? input.publishedAt
+        : `${input.publishedAt}T08:00:00.000Z`;
+    }
+
+    if (existing) {
+      postBody.updated_at = existing.updated_at;
+      const updated = await ghostAdminFetch<{ posts?: GhostPost[] }>(
+        `posts/${encodeURIComponent(existing.id)}/?source=html`,
+        {
+          method: "PUT",
+          body: { posts: [postBody] },
+        },
+      );
+      return updated.ok
+        ? { synced: true }
+        : { synced: false, error: updated.error };
+    }
+
+    const created = await ghostAdminFetch<{ posts?: GhostPost[] }>(
+      "posts/?source=html",
       {
-        method: "PUT",
+        method: "POST",
         body: { posts: [postBody] },
       },
     );
-    return updated.ok
+    return created.ok
       ? { synced: true }
-      : { synced: false, error: updated.error };
-  }
+      : { synced: false, error: created.error };
+  };
 
-  const created = await ghostAdminFetch<{ posts?: GhostPost[] }>(
-    "posts/?source=html",
-    {
-      method: "POST",
-      body: { posts: [postBody] },
-    },
-  );
-  return created.ok
-    ? { synced: true }
-    : { synced: false, error: created.error };
+  const first = await writeOnce();
+  if (!first.synced && first.error?.toLowerCase().includes("nested relation")) {
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    return writeOnce();
+  }
+  return first;
 }
 
 export async function setGhostPostStatusBySlug(
