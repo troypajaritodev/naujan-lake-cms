@@ -13,6 +13,7 @@ import {
 } from "@/lib/ghost";
 import type { ParkRule, Zone } from "@/lib/guidelines";
 import type { ConservationStatus, Seasonality, Species, SpeciesPhoto } from "@/lib/species-meta";
+import { photoFor, speciesPhotos } from "@/lib/species-photos";
 import type { ItineraryStop, TariffLine, Tour, TourDifficulty } from "@/lib/tours-meta";
 
 export type GhostCollectionKind = "advisories" | "tours" | "species" | "guidelines";
@@ -683,6 +684,14 @@ function mapGhostPostToSpecies(post: GhostPost): Species | null {
       ? (meta.seasonality as Seasonality)
       : "RESIDENT";
 
+  const curated = speciesPhotos[post.slug];
+  const fallbackPhoto =
+    meta.photo &&
+    curated &&
+    meta.photo.src === curated.src
+      ? curated
+      : (meta.photo ?? photoFor(post.slug));
+
   const photo: SpeciesPhoto | undefined = post.feature_image?.trim()
     ? {
         src: post.feature_image.trim(),
@@ -692,7 +701,7 @@ function mapGhostPostToSpecies(post: GhostPost): Species | null {
         licenseUrl: meta.photo?.licenseUrl || "",
         sourceUrl: meta.photo?.sourceUrl || "",
       }
-    : meta.photo;
+    : fallbackPhoto;
 
   return {
     slug: post.slug,
