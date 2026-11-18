@@ -1,7 +1,7 @@
 # Image credits
 
-All photographs in `public/images/` come from Wikimedia Commons under free
-licences. They are re-published here at reduced resolution as optimized WebP
+All photographs in `public/images/` come from Wikimedia Commons or iNaturalist under
+free licences. They are re-published here at reduced resolution as optimized WebP
 for web delivery. The licence of each individual file is listed below — they
 are **not** all the same version, so check the relevant row before reuse.
 
@@ -37,7 +37,7 @@ carries the definitive licence and author information.
 | `species/wandering-whistling-duck.webp` | [Wandering Whistling Duck, Nusa Dua, Bali, Indonesia 1.jpg](https://commons.wikimedia.org/wiki/File:Wandering_Whistling_Duck,_Nusa_Dua,_Bali,_Indonesia_1.jpg) | Lip Kee | [CC BY-SA 2.0](https://creativecommons.org/licenses/by-sa/2.0) | Wandering whistling duck |
 | `species/great-egret.webp` | [Great Egret (Ardea alba) in Breeding Plumage, Cape May County, New Jersey, USA (cropped).png](https://commons.wikimedia.org/wiki/File:Great_Egret_%28Ardea_alba%29_in_Breeding_Plumage,_Cape_May_County,_New_Jersey,_USA_%28cropped%29.png) | Chuck Homler (FocusOnWildlife.Me) | [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0) | Great egret |
 | `species/milkfish.webp` | [Chanos chanos.jpg](https://commons.wikimedia.org/wiki/File:Chanos_chanos.jpg) | Elisabeth Morcel | [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0) | Milkfish |
-| `species/mudfish.webp` | [Channa striata.jpg](https://commons.wikimedia.org/wiki/File:Channa_striata.jpg) | BEDO (Thailand) | [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0) | Mudfish |
+| `species/mudfish.webp` | [Channa striata — Observation 78794768](https://www.inaturalist.org/observations/78794768) | Ian Dugdale | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0) | Mudfish |
 | `species/nile-tilapia.webp` | [Tilápia ou Sarotherodon niloticus 2.jpg](https://commons.wikimedia.org/wiki/File:Til%C3%A1pia_ou_Sarotherodon_niloticus_2.jpg) | Germano Roberto Schüür | [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0) | Nile tilapia |
 | `species/flathead-goby.webp` | [Glossogo giur 160312-57258 rwg.JPG](https://commons.wikimedia.org/wiki/File:Glossogo_giur_160312-57258_rwg.JPG) | Wibowo Djatmiko ( Wie146 ) | [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0) | Flathead goby |
 | `species/common-green-frog.webp` | [Hoplobatrachus rugulosus 2.jpg](https://commons.wikimedia.org/wiki/File:Hoplobatrachus_rugulosus_2.jpg) | Arvin Diesmos, National Museum of the Philippines , nationalmuseum.gov.ph | [Public domain](https://commons.wikimedia.org/wiki/Commons:Licensing) | Common green frog |

@@ -70,10 +70,10 @@ export const speciesPhotos: Record<string, SpeciesPhoto> = {
   "mudfish": {
     src: "/images/species/mudfish.webp",
     alt: "Illustrative photograph of Mudfish (Channa striata)",
-    credit: "BEDO",
-    license: "CC BY-SA 4.0",
-    licenseUrl: "https://creativecommons.org/licenses/by-sa/4.0",
-    sourceUrl: "https://commons.wikimedia.org/wiki/File:Channa_striata.jpg",
+    credit: "Ian Dugdale",
+    license: "CC BY 4.0",
+    licenseUrl: "https://creativecommons.org/licenses/by/4.0",
+    sourceUrl: "https://www.inaturalist.org/observations/78794768",
   },
   "nile-tilapia": {
     src: "/images/species/nile-tilapia.webp",
